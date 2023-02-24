@@ -1,12 +1,14 @@
-from os import getenv
+import os
 from keyboards import keyboards as kb
 from request import get_result
 from aiogram import Bot, types
 from aiogram.dispatcher import Dispatcher
 from aiogram.utils import executor
+from dotenv import load_dotenv
 import logging
 
-botApi = getenv("BOT_TOKEN")
+load_dotenv()
+botApi = os.getenv('BOT_TOKEN')
 
 bot = Bot(token=botApi)
 dp = Dispatcher(bot)
