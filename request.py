@@ -5,7 +5,6 @@ import pytz
 import re
 
 
-
 def get_result(timeint, snt, dsnt, route):
     tz = pytz.timezone('Asia/Dubai')
     now = datetime.now(tz)
