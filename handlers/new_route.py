@@ -70,3 +70,7 @@ async def process_callback_button(callback_query: CallbackQuery):
         )
 
 
+def check_state(user_id):
+    if user_id in state:
+        print(state)
+        del state[user_id]
