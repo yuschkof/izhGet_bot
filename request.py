@@ -1,11 +1,12 @@
 import requests
-from bs4 import BeautifulSoup
+from lxml import etree
 from datetime import datetime
 import pytz
 import re
 
 
 def get_result(timeint, snt, dsnt, route):
+    start_time = datetime.now()
     tz = pytz.timezone('Asia/Dubai')
     now = datetime.now(tz)
     current_hours = now.strftime("%H")
@@ -30,16 +31,20 @@ def get_result(timeint, snt, dsnt, route):
         response = session.post(
             'https://xn--c1aff6b0c.xn--p1ai/rasp/load_station.php', data=data)
 
-        soup = BeautifulSoup(response.text, 'html.parser')
-        table = soup.find('table')
-        if not table:
-            font_tag = soup.find('font', {'color': 'RED', 'size': '3'})
+        html_parser = etree.HTMLParser()
+        root = etree.fromstring(response.text, html_parser)
+
+        table = root.find(".//table")
+        if table is None or len(table) == 0:
+            font_tag = root.find(".//font[@color='RED'][@size='3']")
             return font_tag.text
+
         text = re.search(r'^(.*)<table border=1>', response.text, re.DOTALL).group(1)
         parts = [text, stroke]
-        rows = table.find_all('tr')[1:]
+
+        rows = table.findall(".//tr")[1:]
         for row in rows:
-            cells = row.find_all('td')
+            cells = row.findall(".//td")
             if len(cells) == 4:
                 route = cells[0].text.strip()
                 departure_time = cells[2].text.strip()
@@ -53,4 +58,8 @@ def get_result(timeint, snt, dsnt, route):
                         f"|   {route}  |   {departure_time}   | {arrival_time}  |")
                     parts.append("|----------------------------|")
         parts.append('</pre>')
+        print(datetime.now() - start_time)
         return '\n'.join(parts)
+
+
+get_result(60, 40, 66, 0)
