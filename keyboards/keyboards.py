@@ -1,4 +1,3 @@
-from aiogram import types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 
@@ -139,190 +138,177 @@ inline_kb0 = InlineKeyboardMarkup(row_width=2, inline_keyboard=[
 
 
 inline_kb1 = InlineKeyboardMarkup(row_width=2, inline_keyboard=[
-    [inline_9, inline_2],
-    [inline_3, inline_21],
-    [inline_17, inline_18],
-    [inline_20, inline_10],
-    [inline_16, inline_14],
-    [inline_19, inline_25],
-    [inline_8, inline_22],
-    [inline_23, inline_24],
-    [inline_4, inline_11],
-    [inline_7, inline_1],
-    [inline_5, inline_66],
-    [inline_12, inline_15],
-    [inline_6],
+    [inline_25, inline_24],
+    [inline_23, inline_22],
+    [inline_21, inline_28],
+    [inline_19, inline_18],
+    [inline_17, inline_16],
+    [inline_15, inline_14],
+    [inline_66, inline_12],
+    [inline_11, inline_10],
+    [inline_9, inline_8],
+    [inline_7, inline_6],
+    [inline_5, inline_4],
+    [inline_3, inline_2],
+    [inline_1],
 ])
 
 
 inline_kb10 = InlineKeyboardMarkup(row_width=2, inline_keyboard=[
-    [inline_40, inline_37],
-    [inline_21, inline_67],
-    [inline_17, inline_62],
-    [inline_18, inline_20],
-    [inline_16, inline_61],
-    [inline_38, inline_14],
-    [inline_19, inline_25],
-    [inline_22, inline_63],
-    [inline_23, inline_24],
-    [inline_64, inline_39],
-    [inline_59, inline_41],
-    [inline_60, inline_66],
-    [inline_15],
-    [inline_36],
+    [inline_25, inline_24],
+    [inline_23, inline_22],
+    [inline_21, inline_28],
+    [inline_19, inline_18],
+    [inline_17, inline_16],
+    [inline_15, inline_14],
+    [inline_66, inline_41],
+    [inline_40, inline_39],
+    [inline_38, inline_37],
+    [inline_36, inline_64],
+    [inline_63, inline_62],
+    [inline_61, inline_60],
+    [inline_67, inline_59]
 ])
 
 
 inline_kb11 = InlineKeyboardMarkup(row_width=2, inline_keyboard=[
-    [inline_37, inline_50],
-    [inline_67, inline_68],
+    [inline_58, inline_50],
+    [inline_68, inline_51],
+    [inline_65, inline_38],
+    [inline_37, inline_36],
+    [inline_64, inline_63],
     [inline_62, inline_61],
-    [inline_38, inline_58],
-    [inline_63, inline_64],
-    [inline_59, inline_51],
-    [inline_65, inline_58],
-    [inline_60, inline_66],
-    [inline_36],
+    [inline_60, inline_67],
+    [inline_59]
 ])
 
 
 inline_kb12 = InlineKeyboardMarkup(row_width=2, inline_keyboard=[
-    [inline_40, inline_37],
-    [inline_9, inline_2],
-    [inline_3, inline_67],
-    [inline_62, inline_10],
-    [inline_61, inline_38],
-    [inline_8, inline_63],
-    [inline_64, inline_39],
-    [inline_59, inline_4],
-    [inline_11, inline_41],
-    [inline_7, inline_1],
-    [inline_60, inline_5],
-    [inline_66, inline_12],
-    [inline_6],
-    [inline_36],
+    [inline_1, inline_2],
+    [inline_3, inline_4],
+    [inline_5, inline_6],
+    [inline_7, inline_8],
+    [inline_9, inline_10],
+    [inline_11, inline_12],
+    [inline_66, inline_41],
+    [inline_40, inline_39],
+    [inline_38, inline_37],
+    [inline_36, inline_64],
+    [inline_63, inline_62],
+    [inline_61, inline_60],
+    [inline_67, inline_59]
 ])
 
 
 inline_kb2 = InlineKeyboardMarkup(row_width=2, inline_keyboard=[
-    [inline_40, inline_26],
-    [inline_50, inline_68],
+    [inline_58, inline_50],
+    [inline_68, inline_51],
+    [inline_65, inline_39],
+    [inline_40, inline_41],
+    [inline_66, inline_14],
+    [inline_15, inline_16],
     [inline_17, inline_52],
-    [inline_16, inline_29],
-    [inline_55, inline_14],
-    [inline_27, inline_58],
-    [inline_39, inline_53],
-    [inline_51, inline_41],
-    [inline_56, inline_65],
-    [inline_58, inline_30],
-    [inline_54, inline_57],
-    [inline_66, inline_15],
-    [inline_28],
+    [inline_53, inline_54],
+    [inline_55, inline_56],
+    [inline_57, inline_30],
+    [inline_29, inline_28],
+    [inline_27, inline_26]
 ])
 
 
 inline_kb3 = InlineKeyboardMarkup(row_width=2, inline_keyboard=[
-    [inline_40, inline_9],
-    [inline_50, inline_2],
-    [inline_3, inline_10],
-    [inline_8, inline_58],
-    [inline_39, inline_4],
-    [inline_11, inline_51],
-    [inline_41, inline_7],
-    [inline_1, inline_65],
-    [inline_58, inline_5],
+    [inline_58, inline_50],
+    [inline_68, inline_51],
+    [inline_65, inline_39],
+    [inline_40, inline_41],
     [inline_66, inline_12],
-    [inline_6]
+    [inline_11, inline_10],
+    [inline_9, inline_8],
+    [inline_7, inline_6],
+    [inline_5, inline_4],
+    [inline_3, inline_1],
+    [inline_1],
 ])
 
 
 inline_kb4 = InlineKeyboardMarkup(row_width=2, inline_keyboard=[
-    [inline_40, inline_50],
-    [inline_21, inline_68],
-    [inline_17, inline_18],
-    [inline_20, inline_16],
-    [inline_14, inline_19],
-    [inline_25, inline_58],
-    [inline_22, inline_23],
-    [inline_24, inline_39],
-    [inline_51, inline_41],
-    [inline_65, inline_58],
-    [inline_66, inline_15]
+    [inline_25, inline_24],
+    [inline_23, inline_22],
+    [inline_21, inline_28],
+    [inline_19, inline_18],
+    [inline_17, inline_16],
+    [inline_15, inline_14],
+    [inline_66, inline_41],
+    [inline_40, inline_39],
+    [inline_65, inline_51],
+    [inline_68, inline_50],
+    [inline_58]
 ])
 
 
 inline_kb5 = InlineKeyboardMarkup(row_width=2, inline_keyboard=[
-    [inline_40, inline_37],
-    [inline_26, inline_9],
-    [inline_33, inline_10],
-    [inline_34, inline_32],
-    [inline_29, inline_38],
-    [inline_27, inline_8],
-    [inline_43, inline_39],
-    [inline_4, inline_35],
-    [inline_46, inline_11],
-    [inline_45, inline_41],
-    [inline_7, inline_47],
-    [inline_48, inline_30],
-    [inline_5, inline_66],
-    [inline_12, inline_31],
-    [inline_28, inline_6],
-    [inline_44],
-    [inline_36]
+    [inline_48, inline_47],
+    [inline_46, inline_45],
+    [inline_44, inline_43],
+    [inline_4, inline_5],
+    [inline_6, inline_7],
+    [inline_8, inline_9],
+    [inline_10, inline_11],
+    [inline_12, inline_66],
+    [inline_41, inline_40],
+    [inline_39, inline_38],
+    [inline_37, inline_36],
+    [inline_35, inline_34],
+    [inline_33, inline_32],
+    [inline_31, inline_30],
+    [inline_29, inline_28],
+    [inline_27, inline_26]
 ])
 
 
 inline_kb7 = InlineKeyboardMarkup(row_width=2, inline_keyboard=[
-    [inline_26, inline_21],
+    [inline_25, inline_24],
+    [inline_23, inline_22],
+    [inline_21, inline_28],
+    [inline_19, inline_18],
     [inline_17, inline_52],
-    [inline_18, inline_20],
-    [inline_29, inline_55],
-    [inline_27, inline_19],
-    [inline_25, inline_22],
-    [inline_23, inline_24],
-    [inline_53, inline_56],
-    [inline_30, inline_54],
-    [inline_57, inline_28]
+    [inline_53, inline_54],
+    [inline_55, inline_56],
+    [inline_57, inline_30],
+    [inline_29, inline_28],
+    [inline_27, inline_26]
 ])
 
 
 inline_kb8 = InlineKeyboardMarkup(row_width=2, inline_keyboard=[
-    [inline_37, inline_26],
-    [inline_9, inline_33],
-    [inline_10, inline_34],
-    [inline_32, inline_29],
-    [inline_38, inline_27],
-    [inline_8, inline_43],
-    [inline_39, inline_4],
-    [inline_35, inline_46],
-    [inline_11, inline_45],
-    [inline_41, inline_7],
-    [inline_47, inline_48],
-    [inline_30, inline_5],
-    [inline_66, inline_12],
-    [inline_31, inline_28],
-    [inline_6, inline_44],
-    [inline_36]
+    [inline_58, inline_50],
+    [inline_68, inline_51],
+    [inline_65, inline_38],
+    [inline_37, inline_36],
+    [inline_64, inline_35],
+    [inline_34, inline_33],
+    [inline_32, inline_31],
+    [inline_30, inline_29],
+    [inline_28, inline_27],
+    [inline_26]
 ])
 
 
 inline_kb9 = InlineKeyboardMarkup(row_width=2, inline_keyboard=[
-    [inline_37, inline_26],
-    [inline_9, inline_33],
-    [inline_10, inline_34],
-    [inline_32, inline_29],
-    [inline_38, inline_27],
-    [inline_8, inline_43],
-    [inline_39, inline_4],
-    [inline_35, inline_46],
-    [inline_11, inline_45],
-    [inline_41, inline_7],
-    [inline_47, inline_48],
-    [inline_30, inline_5],
-    [inline_66, inline_12],
-    [inline_31, inline_28],
-    [inline_6, inline_44],
-    [inline_36]
+    [inline_1, inline_2],
+    [inline_3, inline_4],
+    [inline_5, inline_6],
+    [inline_7, inline_8],
+    [inline_9, inline_10],
+    [inline_11, inline_12],
+    [inline_66, inline_14],
+    [inline_15, inline_16],
+    [inline_17, inline_52],
+    [inline_53, inline_54],
+    [inline_55, inline_56],
+    [inline_57, inline_30],
+    [inline_29, inline_28],
+    [inline_27, inline_26]
 ])
 
 
