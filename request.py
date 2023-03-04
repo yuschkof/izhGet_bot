@@ -6,7 +6,6 @@ import re
 
 
 def get_result(timeint, snt, dsnt, route):
-    start_time = datetime.now()
     tz = pytz.timezone('Asia/Dubai')
     now = datetime.now(tz)
     current_hours = now.strftime("%H")
@@ -58,8 +57,4 @@ def get_result(timeint, snt, dsnt, route):
                         f"|   {route}  |   {departure_time}   | {arrival_time}  |")
                     parts.append("|----------------------------|")
         parts.append('</pre>')
-        print(datetime.now() - start_time)
         return '\n'.join(parts)
-
-
-get_result(60, 40, 66, 0)

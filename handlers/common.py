@@ -17,7 +17,6 @@ async def process_start_command(message: types.Message):
     await message.reply(
         "Привет!\nЯ бот с расписанием трамваев в г.Ижевск\nДля выбора маршрута нажми /new"
     )
-    await message.reply("Теперь я в Германии")
 
 
 @router.message(commands=['help'])
