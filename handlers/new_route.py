@@ -1,4 +1,5 @@
 from aiogram import Router
+from aiogram.filters import Command
 from aiogram.types import CallbackQuery
 import keyboards.keyboards as kb
 from request import get_result
@@ -8,7 +9,7 @@ router = Router()
 state = {}
 
 
-@router.message(commands=['new'])
+@router.message(Command('new'))
 async def process_new_command(message: types.Message):
     await message.answer("Показать рейсы в ближайшие?", reply_markup=kb.inline_kb_time)
 

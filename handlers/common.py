@@ -3,6 +3,8 @@ from aiogram import types
 from aiogram.types import URLInputFile
 from .new_route import check_state
 import random
+from aiogram.filters import Command
+
 router = Router()
 
 schema = 'https://psv4.userapi.com/c237231/u142865105/docs/d20/137d946e0c5c/schema.png?extra=A1DE1OSRep6DKMCgvtCq5-G' \
@@ -11,7 +13,7 @@ schema = 'https://psv4.userapi.com/c237231/u142865105/docs/d20/137d946e0c5c/sche
 sticker = r'CAACAgIAAxkBAAEH3Ppj9xWKbtQ-kWtb6uKkwvE8EbGCMQAC9ScAAp-e8Enjve-XHgojSS4E'
 
 
-@router.message(commands=['start'])
+@router.message(Command('start'))
 async def process_start_command(message: types.Message):
     check_state(message.from_user.id)
     await message.reply(
@@ -19,7 +21,7 @@ async def process_start_command(message: types.Message):
     )
 
 
-@router.message(commands=['help'])
+@router.message(Command('help'))
 async def process_help_command(message: types.Message):
     check_state(message.from_user.id)
     msg = "Тут и так простое управление, как ты не смог(ла) разобраться?"
@@ -27,7 +29,7 @@ async def process_help_command(message: types.Message):
     await message.answer_sticker(sticker)
 
 
-@router.message(commands=['description'])
+@router.message(Command('description'))
 async def process_description_command(message: types.Message):
     check_state(message.from_user.id)
     msg = '''Уважаемые пассажиры, данная информационная система позволяет Вам рассчитать время отправления и прибытия на указанных остановочных пунктах трамваев. Напоминаем, что согласно правил технической эксплуатации трамвая существует допуск на отклонение от расписания +2 мин. (опоздание), -1 мин. (нагон).
@@ -37,7 +39,7 @@ async def process_description_command(message: types.Message):
     await message.answer_photo(photo=URLInputFile(schema))
 
 
-@router.message(commands="dice")
+@router.message(Command('dice'))
 async def cmd_dice(message: types.Message):
     check_state(message.from_user.id)
     dice = ['🎲', '🎯', '🏀', '⚽', '🎰', '🎳']
