@@ -20,7 +20,7 @@ async def process_new_command(message: types.Message, command: CommandObject):
                 {"role": "user", "content": command.args}
             ]
         )
-        await message.answer(text=str(completion.choices[0].message.content))
+        await message.answer(text=str(completion.choices[0].message.content), parse_mode='MarkdownV2')
     else:
         await message.answer("Вы не админ, чтоб задавать такие вопросы")
 
