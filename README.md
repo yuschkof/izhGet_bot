@@ -19,8 +19,7 @@ Windows:
 ```bash
 git clone https://github.com/yuschkof/izhGet_bot.git
 cd izhGet_bot
-pip install virtualenv
-virtualenv --python C:\Path\To\Python\python.exe venv
+python -m venv venv
 .\venv\Scripts\activate
 pip install -r requirements.txt
 ```
