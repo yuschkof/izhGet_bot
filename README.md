@@ -11,7 +11,7 @@ linux:
 ```bash
 git clone https://github.com/yuschkof/izhGet_bot.git
 cd izhGet_bot
-python3.9 -m venv venv
+python3 -m venv venv
 source venv/bin/activate
 pip3 install -r requirements.txt
 ```
