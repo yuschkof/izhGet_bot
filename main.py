@@ -3,7 +3,7 @@ import os
 from aiogram import Bot, Dispatcher
 import logging
 from dotenv import load_dotenv
-from handlers import common, new_route, openai
+from handlers import common, new_route
 
 
 async def main():
@@ -15,7 +15,6 @@ async def main():
 
     dp.include_router(common.router)
     dp.include_router(new_route.router)
-    dp.include_router(openai.router)
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
