@@ -1,77 +1,143 @@
-from aiogram import Router
+import logging
+from typing import Dict, Any
+
+from aiogram import Router, F
+from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+
 import keyboards.keyboards as kb
 from request import get_result
-from aiogram import types
+import db.db as db
+
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Определение состояний для машины состояний
+class RouteSelection(StatesGroup):
+    selecting_time = State()
+    selecting_route = State()
+    selecting_start_point = State()
+    selecting_destination = State()
 
 router = Router()
-state = {}
-
 
 @router.message(Command('new'))
-async def process_new_command(message: types.Message):
-    await message.answer("Показать рейсы в ближайшие?", reply_markup=kb.inline_kb_time)
+async def process_new_command(message: Message, state: FSMContext):
+    """Обработка команды /new, добавление пользователя и начало выбора маршрута"""
+    try:
+        # Сохранение информации о пользователе
+        user_info = {
+            'user_id': message.from_user.id,
+            'user_name': message.from_user.username,
+            'first_name': message.from_user.first_name,
+            'last_name': message.from_user.last_name,
+            'is_premium': message.from_user.is_premium
+        }
+        db.add_user(user_info)
 
+        # Установка состояния и отправка клавиатуры времени
+        await state.set_state(RouteSelection.selecting_time)
+        await message.answer(
+            "Показать рейсы в ближайшие?", 
+            reply_markup=kb.inline_kb_time
+        )
+    except Exception as e:
+        logger.error(f"Ошибка в process_new_command: {e}")
+        await message.answer("Произошла ошибка. Попробуйте снова.")
 
-@router.callback_query(lambda c: c.data.startswith('time'))
-async def process_callback_button_time(callback_query: CallbackQuery):
-    button_id = callback_query.data.split('time')[1]
-    user_id = callback_query.from_user.id
-    state.setdefault(user_id, {})
+@router.callback_query(RouteSelection.selecting_time, F.data.startswith('time'))
+async def process_time_selection(callback: CallbackQuery, state: FSMContext):
+    """Обработка выбора времени"""
+    try:
+        time_interval = callback.data.split('time')[1]
+        
+        # Сохранение выбранного времени в состоянии
+        await state.update_data(timeint=time_interval)
+        await state.set_state(RouteSelection.selecting_route)
 
-    if 'timeint' not in state[user_id]:
-        state[user_id]['timeint'] = button_id
-        await callback_query.message.edit_text(
+        await callback.message.edit_text(
             text='Показать остановки для маршрута:',
             reply_markup=kb.inline_kb_route
         )
+    except Exception as e:
+        logger.error(f"Ошибка в process_time_selection: {e}")
+        await callback.answer("Произошла ошибка. Попробуйте снова.")
 
+@router.callback_query(RouteSelection.selecting_route, F.data.startswith('route'))
+async def process_route_selection(callback: CallbackQuery, state: FSMContext):
+    """Обработка выбора маршрута"""
+    try:
+        route = callback.data.split('route')[1]
+        
+        # Сохранение выбранного маршрута в состоянии
+        await state.update_data(route=route)
+        await state.set_state(RouteSelection.selecting_start_point)
 
-@router.callback_query(lambda c: c.data.startswith('route'))
-async def process_callback_button_route(callback_query: CallbackQuery):
-    button_id = callback_query.data.split('route')[1]
-
-    user_id = callback_query.from_user.id
-    state.setdefault(user_id, {})
-    currentKb = None
-    if 'route' not in state[user_id]:
-        state[user_id]['route'] = button_id
-        currentKb = kb.kb_dict.get(state[user_id]['route'])
-        await callback_query.message.edit_text(
+        current_keyboard = kb.kb_dict.get(route)
+        await callback.message.edit_text(
             text='Пункт отправления:',
-            reply_markup=currentKb
+            reply_markup=current_keyboard
         )
+    except Exception as e:
+        logger.error(f"Ошибка в process_route_selection: {e}")
+        await callback.answer("Произошла ошибка. Попробуйте снова.")
 
+@router.callback_query(RouteSelection.selecting_start_point, F.data.startswith('new'))
+async def process_start_point_selection(callback: CallbackQuery, state: FSMContext):
+    """Обработка выбора пункта отправления"""
+    try:
+        start_point = callback.data.split('new')[1]
+        
+        # Сохранение пункта отправления в состоянии
+        await state.update_data(snt=start_point)
+        await state.set_state(RouteSelection.selecting_destination)
 
-@router.callback_query(lambda c: c.data)
-async def process_callback_button(callback_query: CallbackQuery):
-    button_id = callback_query.data
-    print(button_id)
-    user_id = callback_query.from_user.id
-    if 'snt' not in state[user_id]:
-        state[user_id]['snt'] = button_id
-        currentKb = kb.kb_dict.get(state[user_id]['route'])
-        await callback_query.message.edit_text(
+        current_keyboard = kb.kb_dict.get(
+            (await state.get_data())['route']
+        )
+        await callback.message.edit_text(
             text='Пункт назначения:',
-            reply_markup=currentKb
+            reply_markup=current_keyboard
         )
-    else:
-        state[user_id]['dsnt'] = button_id
-        timeint = state[user_id]['timeint']
-        snt = state[user_id]['snt']
-        dsnt = state[user_id]['dsnt']
-        route = state[user_id]['route']
-        stroke = get_result(timeint, snt, dsnt, route)
-        del state[user_id]
-        await callback_query.message.edit_text(
-            text=stroke,
+    except Exception as e:
+        logger.error(f"Ошибка в process_start_point_selection: {e}")
+        await callback.answer("Произошла ошибка. Попробуйте снова.")
+
+@router.callback_query(RouteSelection.selecting_destination, F.data.startswith('new'))
+async def process_destination_selection(callback: CallbackQuery, state: FSMContext):
+    """Обработка выбора пункта назначения и получение результата"""
+    try:
+        destination = callback.data.split('new')[1]
+        
+        # Получение всех данных из состояния
+        data = await state.get_data()
+        data['dsnt'] = destination
+
+        # Получение результата
+        result = get_result(
+            data['timeint'], 
+            data['snt'], 
+            data['dsnt'], 
+            data['route']
+        )
+
+        # Очистка состояния
+        await state.clear()
+
+        await callback.message.edit_text(
+            text=result,
             reply_markup=None,
             parse_mode='HTML'
         )
+    except Exception as e:
+        logger.error(f"Ошибка в process_destination_selection: {e}")
+        await callback.answer("Произошла ошибка. Попробуйте снова.")
 
-
-def check_state(user_id):
-    if user_id in state:
-        print(state)
-        del state[user_id]
+@router.message(Command('cancel'))
+async def cancel_handler(message: Message, state: FSMContext):
+    """Обработчик отмены текущего состояния"""
+    await state.clear()
+    await message.answer("Выбор маршрута отменен.")
