@@ -1,94 +1,47 @@
-import random
-import logging
-from aiogram import Router, types
-from aiogram.types import URLInputFile
-from aiogram.filters import CommandStart, Command
+from aiogram import Router
+from aiogram.types import Message
+from aiogram.filters import Command
 import db.db as db
-import keyboards.keyboards as kb
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 router = Router()
 
-STICKER_ID = 'CAACAgIAAxkBAAEH3Ppj9xWKbtQ-kWtb6uKkwvE8EbGCMQAC9ScAAp-e8Enjve-XHgojSS4E'
+@router.message(Command("start"))
+async def cmd_start(message: Message):
+    await message.answer(
+        f"Привет, {message.from_user.first_name}! 👋\n\n"
+        "Я бот для просмотра расписания транспорта ИжГЭТ.\n"
+        "Помогаю быстро узнать, когда приедет твой трамвай или троллейбус.\n\n"
+        "⚠️ <b>Важно:</b> Я не являюсь официальным ботом ИжГЭТ. "
+        "Данные берутся с открытого сайта, поэтому я не несу ответственности за возможные неточности в расписании или опоздания транспорта.\n\n"
+        "🔎 Жми /new — найти маршрут\n"
+        "⭐ Жми /favorites — сохраненные маршруты"
+    )
 
-@router.message(CommandStart())
-async def process_start_command(message: types.Message):
-    try:
-        await message.reply(
-            """
-Привет! 👋
-Я бот с расписанием трамваев в г.Ижевск 🚃
-Доступные команды:
-- /new - Выбрать новый маршрут
-- /favorites - Посмотреть избранные маршруты
-- /add_favorite - Добавить маршрут в избранное
-- /delete_favorite - Удалить маршрут из избранного
-- /description - Описание бота
-- /developer - Узнать о создателе
-Для начала работы нажми /new и выбери интересующий маршрут! 🚉
-            """        
-        )
-    except Exception as e:
-        logger.error(f"Error in start command: {e}")
-        await message.reply("Произошла ошибка при запуске бота.")
+@router.message(Command("help"))
+async def cmd_help(message: Message):
+    await message.answer(
+        "Команды бота:\n"
+        "/new - Поиск расписания\n"
+        "/favorites - Избранное\n"
+    )
 
-@router.message(Command('developer'))
-async def process_developer_command(message: types.Message):
-    try:
-        await message.answer("Там я", reply_markup=kb.WebAppMe)
-    except Exception as e:
-        logger.error(f"Error in developer command: {e}")
-        await message.reply("Произошла ошибка при отображении информации о разработчике.")
-
-@router.message(Command('help'))
-async def process_help_command(message: types.Message):
-    try:
-        msg = "Тут и так простое управление, как ты не смог(ла) разобраться?"
-        await message.reply(msg)
-        await message.answer_sticker(STICKER_ID)
-    except Exception as e:
-        logger.error(f"Error in help command: {e}")
-        await message.reply("Произошла ошибка при обработке команды помощи.")
-
-@router.message(Command('description'))
-async def process_description_command(message: types.Message):
-    try:
-        msg = '''Уважаемые пассажиры, данная информационная система позволяет Вам рассчитать время отправления и прибытия на указанных остановочных пунктах трамваев. Напоминаем, что согласно правил технической эксплуатации трамвая существует допуск на отклонение от расписания +2 мин. (опоздание), -1 мин. (нагон).
-Обращаем ваше внимание на то, что расписания для будних дней, субботы и воскресенья могут отличаться.
-Данная информация основана на расписании движения трамваев, при условии отсутствия задержек в линии.'''
-        await message.reply(msg)
-    except Exception as e:
-        logger.error(f"Error in description command: {e}")
-        await message.reply("Произошла ошибка при отображении описания.")
-
-@router.message(Command('statistics'))
-async def cmd_statistics(message: types.Message):
-    try:
-        if message.from_user.id != 842331262:
+@router.message(Command("stat"))
+async def cmd_stat(message: Message):
+    if message.from_user.id != 842331262:
             return
-        
-        day_usage_count = db.get_day_usage_count()
-        favorite_route_count = db.get_favorite_route_count()
-        user_count = db.get_user_count()
-        
-        await message.reply(
-            f"""
-Количество пользователей: {user_count}
-Количество избранных маршрутов: {favorite_route_count}
-Количество запросов за текущий день: {day_usage_count}
-            """
-        )
-    except Exception as e:
-        logger.error(f"Error in statistics command: {e}")
-        await message.reply("Произошла ошибка при получении статистики.")
-
-@router.message(Command('dice'))
-async def cmd_dice(message: types.Message):
-    try:
-        dice = ['🎲', '🎯', '🏀', '⚽', '🎰', '🎳']
-        await message.answer_dice(emoji=random.choice(dice))
-    except Exception as e:
-        logger.error(f"Error in dice command: {e}")
-        await message.reply("Произошла ошибка при бросании кубика.")
+    
+    # Простая текстовая статистика
+    users_count = db.get_users_count()
+    stats_data = db.get_statistics() # Список кортежей (дата, просмотры)
+    
+    text = f"📊 <b>Статистика бота</b>\n\n"
+    text += f"👥 Всего пользователей: {users_count}\n\n"
+    text += "📅 Активность за последние дни:\n"
+    
+    if not stats_data:
+        text += "Нет данных."
+    else:
+        for day, uses in stats_data[:10]: # Показываем последние 10 дней
+            text += f"• {day}: {uses} запросов\n"
+            
+    await message.answer(text, parse_mode="HTML")

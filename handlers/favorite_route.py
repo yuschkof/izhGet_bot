@@ -1,215 +1,113 @@
-import logging
-from typing import List, Dict, Any
-
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
-import keyboards.keyboards_favorite as kb
-from request import get_result
 import db.db as db
-
-# Logging setup
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# State machine for favorite route selection
-class FavoriteRouteSelection(StatesGroup):
-    selecting_time = State()
-    selecting_route = State()
-    selecting_start_point = State()
-    selecting_destination = State()
+import keyboards.keyboards as kb
+from keyboards.keyboards import FavCallback
+from request import get_result
 
 router = Router()
 
-@router.message(Command('favorites'))
-async def process_favorites_command(message: Message):
-    try:
-        favorites_route = db.get_favorite_routes(message.from_user.id)
-        if not favorites_route:
-            await message.answer("Избранные маршруты отсутствуют")
-            return
-        await message.answer(
-            "Избранные маршруты", 
-            reply_markup=get_keyboard(favorites_route, "check")
-        )
-    except Exception as e:
-        logger.error(f"Error in favorites command: {e}")
-        await message.answer("Произошла ошибка при получении избранных маршрутов")
+# Состояния для переименования
+class FavEdit(StatesGroup):
+    waiting_for_new_name = State()
 
-@router.message(Command('add_favorite'))
-async def process_add_favorite_command(message: Message, state: FSMContext):
-    try:
-        user_info = {
-            'user_id': message.from_user.id,
-            'user_name': message.from_user.username,
-            'first_name': message.from_user.first_name,
-            'last_name': message.from_user.last_name,
-            'is_premium': message.from_user.is_premium
-        }
-        db.add_user(user_info)
-        
-        await state.set_state(FavoriteRouteSelection.selecting_time)
-        await message.answer(
-            "Добавить в избранное. Показать рейсы в ближайшие?", 
-            reply_markup=kb.inline_kb_time
-        )
-    except Exception as e:
-        logger.error(f"Error in add_favorite command: {e}")
-        await message.answer("Произошла ошибка при добавлении маршрута")
+@router.message(Command("favorites"))
+async def cmd_favorites(message: Message):
+    user_id = message.from_user.id
+    favorites = db.get_favorite_routes(user_id)
+    
+    if not favorites:
+        await message.answer("У вас пока нет избранных маршрутов. Создайте маршрут через /new и нажмите 'Добавить в избранное'.")
+        return
 
-@router.callback_query(FavoriteRouteSelection.selecting_time, F.data.startswith('favorite_time'))
-async def favorite_time_selection(callback: CallbackQuery, state: FSMContext):
-    try:
-        time_interval = callback.data.split('favorite_time')[1]
-        await state.update_data(timeint=time_interval)
-        await state.set_state(FavoriteRouteSelection.selecting_route)
-        
-        await callback.message.edit_text(
-            text='Показать остановки для маршрута:',
-            reply_markup=kb.inline_kb_route
-        )
-    except Exception as e:
-        logger.error(f"Error in time selection: {e}")
-        await callback.answer("Произошла ошибка при выборе времени")
+    markup = kb.get_favorites_list_kb(favorites)
+    await message.answer("⭐ Ваши избранные маршруты:", reply_markup=markup)
 
-@router.callback_query(FavoriteRouteSelection.selecting_route, F.data.startswith('favorite_route'))
-async def favorite_route_selection(callback: CallbackQuery, state: FSMContext):
-    try:
-        route = callback.data.split('route')[1]
-        await state.update_data(route=route)
-        await state.set_state(FavoriteRouteSelection.selecting_start_point)
-        
-        current_keyboard = kb.kb_dict.get(route)
-        await callback.message.edit_text(
-            text='Пункт отправления:',
-            reply_markup=current_keyboard
-        )
-    except Exception as e:
-        logger.error(f"Error in route selection: {e}")
-        await callback.answer("Произошла ошибка при выборе маршрута")
+@router.callback_query(FavCallback.filter(F.action == "select"))
+async def on_favorite_click(call: CallbackQuery, callback_data: FavCallback):
+    fav_id = int(callback_data.id)
+    user_id = call.from_user.id
+    
+    favorites = db.get_favorite_routes(user_id)
+    # Ищем маршрут (теперь кортеж из 6 элементов)
+    target_fav = next((f for f in favorites if f[0] == fav_id), None)
+    
+    if not target_fav:
+        await call.answer("Маршрут не найден", show_alert=True)
+        return
+    
+    # Распаковываем (custom_name нам тут не нужен для запроса, но он есть в кортеже)
+    _, route, snt, dsnt, timeint, _ = target_fav
+    
+    await call.message.edit_text("⏳ Загружаю расписание...", reply_markup=None)
+    
+    text_result = await get_result(
+        timeint=timeint,
+        snt=snt,
+        dsnt=dsnt,
+        route=route
+    )
+    
+    # Показываем кнопки "Переименовать" и "Удалить"
+    markup = kb.get_delete_kb(fav_id)
+    await call.message.edit_text(text_result, parse_mode="HTML", reply_markup=markup)
 
-@router.callback_query(FavoriteRouteSelection.selecting_start_point, F.data.startswith('favorite'))
-async def favorite_start_point_selection(callback: CallbackQuery, state: FSMContext):
-    try:
-        start_point = callback.data.split('favorite')[1]
-        await state.update_data(snt=start_point)
-        await state.set_state(FavoriteRouteSelection.selecting_destination)
-        
-        current_keyboard = kb.kb_dict.get((await state.get_data())['route'])
-        await callback.message.edit_text(
-            text='Пункт назначения:',
-            reply_markup=current_keyboard
-        )
-    except Exception as e:
-        logger.error(f"Error in start point selection: {e}")
-        await callback.answer("Произошла ошибка при выборе пункта отправления")
+# === ЛОГИКА ПЕРЕИМЕНОВАНИЯ ===
 
-@router.callback_query(FavoriteRouteSelection.selecting_destination, F.data.startswith('favorite'))
-async def favorite_destination_selection(callback: CallbackQuery, state: FSMContext):
-    try:
-        destination = callback.data.split('favorite')[1]
-        data = await state.get_data()
-        data['dsnt'] = destination
-        
-        route_info = {
-            'user_id': callback.from_user.id,
-            'route': data['route'],
-            'snt': data['snt'],
-            'dsnt': data['dsnt'],
-            'timeint': data['timeint']
-        }
-        
-        await state.clear()
-        
-        if not db.add_favorite_route(route_info):
-            await callback.message.edit_text(
-                text="Такой маршрут уже добавлен",
-                reply_markup=None,
-                parse_mode='HTML'
-            )
-            return
-        
-        await callback.message.edit_text(
-            text="Маршрут добавлен в избранное.\nДля просмотра используйте /favorites",
-            reply_markup=None,
-            parse_mode='HTML'
-        )
-    except Exception as e:
-        logger.error(f"Error in destination selection: {e}")
-        await callback.answer("Произошла ошибка при добавлении маршрута")
+# 1. Нажали кнопку "Переименовать"
+@router.callback_query(FavCallback.filter(F.action == "rename_ask"))
+async def on_rename_ask(call: CallbackQuery, callback_data: FavCallback, state: FSMContext):
+    fav_id = callback_data.id
+    # Запоминаем ID маршрута, который хотим переименовать
+    await state.update_data(editing_fav_id=fav_id)
+    
+    await call.message.edit_text(
+        "✍️ Введите новое название для этого маршрута:\n"
+        "(например: <i>Домой</i> или <i>На работу</i>)",
+        parse_mode="HTML",
+        reply_markup=kb.get_cancel_rename_kb()
+    )
+    await state.set_state(FavEdit.waiting_for_new_name)
 
-@router.callback_query(F.data.startswith('check_favorite'))
-async def favorite_show_route(callback: CallbackQuery):
-    try:
-        data_string = callback.data.split('check_favorite_')[1]
-        route, snt, dsnt, timeint = map(int, data_string.split('_'))
-        result = get_result(timeint, snt, dsnt, route)
-        
-        await callback.message.edit_text(
-            text=result,
-            reply_markup=None,
-            parse_mode='HTML'
-        )
-    except Exception as e:
-        logger.error(f"Error in showing favorite route: {e}")
-        await callback.answer("Произошла ошибка при отображении маршрута")
+# 2. Пользователь прислал текст с новым именем
+@router.message(FavEdit.waiting_for_new_name)
+async def on_new_name_input(message: Message, state: FSMContext):
+    data = await state.get_data()
+    fav_id = data.get('editing_fav_id')
+    new_name = message.text
+    
+    # Ограничим длину имени, чтобы не ломать кнопки
+    if len(new_name) > 30:
+        await message.answer("⚠️ Название слишком длинное. Попробуйте короче (до 30 символов).")
+        return
 
-@router.message(Command('delete_favorite'))
-async def process_delete_favorite_command(message: Message):
-    try:
-        favorites_route = db.get_favorite_routes(message.from_user.id)
-        if not favorites_route:
-            await message.answer("Избранные маршруты отсутствуют")
-            return
-        await message.answer(
-            "Выберете маршрут для удаления", 
-            reply_markup=get_keyboard(favorites_route, "delete")
-        )
-    except Exception as e:
-        logger.error(f"Error in delete_favorite command: {e}")
-        await message.answer("Произошла ошибка при получении избранных маршрутов")
+    # Сохраняем в БД
+    db.rename_favorite_route(fav_id, new_name)
+    
+    await message.answer(f"✅ Маршрут переименован в «<b>{new_name}</b>»!", parse_mode="HTML")
+    
+    # Возвращаем список избранного
+    await cmd_favorites(message)
+    await state.clear()
 
-@router.callback_query(F.data.startswith('delete_favorite'))
-async def favorite_delete_route(callback: CallbackQuery):
-    try:
-        data_string = callback.data.split('delete_favorite_')[1]
-        route, snt, dsnt, timeint = map(int, data_string.split('_'))
-        route_info = {
-            'user_id': callback.from_user.id,
-            'route': route,
-            'snt': snt,
-            'dsnt': dsnt,
-            'timeint': timeint
-        }
+# 3. Отмена переименования
+@router.callback_query(F.data == "cancel_rename")
+async def on_rename_cancel(call: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await call.message.delete()
+    await call.answer("Переименование отменено")
 
-        if not db.delete_favorite_route(route_info):
-            await callback.message.edit_text(
-                text="Не удалось удалить избранный маршрут",
-                reply_markup=None,
-                parse_mode='HTML'
-            )
-            return
-        
-        await callback.message.edit_text(
-            text="Избранный маршрут удален.\nДля просмотра используйте /favorites",
-            reply_markup=None,
-            parse_mode='HTML'
-        )
-    except Exception as e:
-        logger.error(f"Error in deleting favorite route: {e}")
-        await callback.answer("Произошла ошибка при удалении маршрута")
-
-def create_button(data: List[Any], callback_name: str) -> InlineKeyboardButton:
-    start_name = db.get_route_name(data[2])
-    dest_name = db.get_route_name(data[3])
-    time_interval = data[4]
-    text = f"№{data[1]}: {start_name} → {dest_name} ({time_interval})"
-    callback_data = f"{callback_name}_favorite_{data[1]}_{data[2]}_{data[3]}_{data[4]}"
-    return InlineKeyboardButton(text=text, callback_data=callback_data)
-
-def get_keyboard(favorite_routes: List[List[Any]], callback_name: str) -> InlineKeyboardMarkup:
-    buttons = [[create_button(item, callback_name)] for item in favorite_routes]
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
+# === ЛОГИКА УДАЛЕНИЯ ===
+@router.callback_query(FavCallback.filter(F.action == "del"))
+async def on_favorite_delete(call: CallbackQuery, callback_data: FavCallback):
+    fav_id = callback_data.id
+    db.delete_favorite_route(fav_id)
+    await call.answer("Маршрут удален", show_alert=True)
+    # Возвращаем обновленный список
+    # await cmd_favorites(call.message) # Можно так, или просто удалить сообщение:
+    await call.message.delete()
+    await call.message.answer("🗑 Маршрут удален.")

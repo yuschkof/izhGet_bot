@@ -1,6 +1,3 @@
-import logging
-from typing import Dict, Any
-
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
@@ -8,136 +5,85 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
 import keyboards.keyboards as kb
+from keyboards.keyboards import TransportCallback, FavCallback
 from request import get_result
 import db.db as db
 
-# Настройка логирования
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Определение состояний для машины состояний
-class RouteSelection(StatesGroup):
-    selecting_time = State()
-    selecting_route = State()
-    selecting_start_point = State()
-    selecting_destination = State()
-
 router = Router()
 
-@router.message(Command('new'))
-async def process_new_command(message: Message, state: FSMContext):
-    """Обработка команды /new, добавление пользователя и начало выбора маршрута"""
-    try:
-        # Сохранение информации о пользователе
-        user_info = {
-            'user_id': message.from_user.id,
-            'user_name': message.from_user.username,
-            'first_name': message.from_user.first_name,
-            'last_name': message.from_user.last_name,
-            'is_premium': message.from_user.is_premium
-        }
-        db.add_user(user_info)
+class RouteOrder(StatesGroup):
+    waiting_for_time = State()
+    waiting_for_route = State()
+    waiting_for_start = State()
+    waiting_for_end = State()
 
-        # Установка состояния и отправка клавиатуры времени
-        await state.set_state(RouteSelection.selecting_time)
-        await message.answer(
-            "Показать рейсы в ближайшие?", 
-            reply_markup=kb.inline_kb_time
-        )
-    except Exception as e:
-        logger.error(f"Ошибка в process_new_command: {e}")
-        await message.answer("Произошла ошибка. Попробуйте снова.")
-
-@router.callback_query(RouteSelection.selecting_time, F.data.startswith('time'))
-async def process_time_selection(callback: CallbackQuery, state: FSMContext):
-    """Обработка выбора времени"""
-    try:
-        time_interval = callback.data.split('time')[1]
-        
-        # Сохранение выбранного времени в состоянии
-        await state.update_data(timeint=time_interval)
-        await state.set_state(RouteSelection.selecting_route)
-
-        await callback.message.edit_text(
-            text='Показать остановки для маршрута:',
-            reply_markup=kb.inline_kb_route
-        )
-    except Exception as e:
-        logger.error(f"Ошибка в process_time_selection: {e}")
-        await callback.answer("Произошла ошибка. Попробуйте снова.")
-
-@router.callback_query(RouteSelection.selecting_route, F.data.startswith('route'))
-async def process_route_selection(callback: CallbackQuery, state: FSMContext):
-    """Обработка выбора маршрута"""
-    try:
-        route = callback.data.split('route')[1]
-        
-        # Сохранение выбранного маршрута в состоянии
-        await state.update_data(route=route)
-        await state.set_state(RouteSelection.selecting_start_point)
-
-        current_keyboard = kb.kb_dict.get(route)
-        await callback.message.edit_text(
-            text='Пункт отправления:',
-            reply_markup=current_keyboard
-        )
-    except Exception as e:
-        logger.error(f"Ошибка в process_route_selection: {e}")
-        await callback.answer("Произошла ошибка. Попробуйте снова.")
-
-@router.callback_query(RouteSelection.selecting_start_point, F.data.startswith('new'))
-async def process_start_point_selection(callback: CallbackQuery, state: FSMContext):
-    """Обработка выбора пункта отправления"""
-    try:
-        start_point = callback.data.split('new')[1]
-        
-        # Сохранение пункта отправления в состоянии
-        await state.update_data(snt=start_point)
-        await state.set_state(RouteSelection.selecting_destination)
-
-        current_keyboard = kb.kb_dict.get(
-            (await state.get_data())['route']
-        )
-        await callback.message.edit_text(
-            text='Пункт назначения:',
-            reply_markup=current_keyboard
-        )
-    except Exception as e:
-        logger.error(f"Ошибка в process_start_point_selection: {e}")
-        await callback.answer("Произошла ошибка. Попробуйте снова.")
-
-@router.callback_query(RouteSelection.selecting_destination, F.data.startswith('new'))
-async def process_destination_selection(callback: CallbackQuery, state: FSMContext):
-    """Обработка выбора пункта назначения и получение результата"""
-    try:
-        destination = callback.data.split('new')[1]
-        
-        # Получение всех данных из состояния
-        data = await state.get_data()
-        data['dsnt'] = destination
-
-        # Получение результата
-        result = get_result(
-            data['timeint'], 
-            data['snt'], 
-            data['dsnt'], 
-            data['route']
-        )
-
-        # Очистка состояния
-        await state.clear()
-
-        await callback.message.edit_text(
-            text=result,
-            reply_markup=None,
-            parse_mode='HTML'
-        )
-    except Exception as e:
-        logger.error(f"Ошибка в process_destination_selection: {e}")
-        await callback.answer("Произошла ошибка. Попробуйте снова.")
-
-@router.message(Command('cancel'))
-async def cancel_handler(message: Message, state: FSMContext):
-    """Обработчик отмены текущего состояния"""
+@router.message(Command("new"))
+async def cmd_new(message: Message, state: FSMContext):
     await state.clear()
-    await message.answer("Выбор маршрута отменен.")
+    await message.answer("Показать рейсы в ближайшие?", reply_markup=kb.get_time_keyboard())
+    await state.set_state(RouteOrder.waiting_for_time)
+
+@router.callback_query(TransportCallback.filter(F.action == "time"))
+async def on_time_selected(call: CallbackQuery, callback_data: TransportCallback, state: FSMContext):
+    await state.update_data(timeint=callback_data.value)
+    await call.message.edit_text("Выберите маршрут:", reply_markup=kb.get_routes_keyboard())
+    await state.set_state(RouteOrder.waiting_for_route)
+
+@router.callback_query(TransportCallback.filter(F.action == "route"))
+async def on_route_selected(call: CallbackQuery, callback_data: TransportCallback, state: FSMContext):
+    route = callback_data.value
+    await state.update_data(route=route)
+    markup = kb.get_stations_keyboard(route)
+    await call.message.edit_text(f"Маршрут {route}. Откуда едем?", reply_markup=markup)
+    await state.set_state(RouteOrder.waiting_for_start)
+
+@router.callback_query(RouteOrder.waiting_for_start, TransportCallback.filter(F.action == "station"))
+async def on_start_station(call: CallbackQuery, callback_data: TransportCallback, state: FSMContext):
+    await state.update_data(snt=callback_data.value)
+    data = await state.get_data()
+    markup = kb.get_stations_keyboard(data['route'])
+    await call.message.edit_text("Куда едем?", reply_markup=markup)
+    await state.set_state(RouteOrder.waiting_for_end)
+
+@router.callback_query(RouteOrder.waiting_for_end, TransportCallback.filter(F.action == "station"))
+async def on_end_station(call: CallbackQuery, callback_data: TransportCallback, state: FSMContext):
+    dsnt = callback_data.value
+    data = await state.get_data()
+    
+    await call.message.edit_text("⏳ Получаю расписание...", reply_markup=None)
+    
+    text_result = await get_result(
+        timeint=data['timeint'],
+        snt=data['snt'],
+        dsnt=dsnt,
+        route=data['route']
+    )
+    
+    # Кнопка добавления в избранное
+    markup = kb.get_after_result_kb(data['route'], data['snt'], dsnt, data['timeint'])
+    
+    await call.message.edit_text(text_result, parse_mode="HTML", reply_markup=markup)
+    await state.clear()
+
+# Обработчик нажатия на кнопку "Добавить в избранное"
+@router.callback_query(FavCallback.filter(F.action == "add"))
+async def on_add_favorite(call: CallbackQuery, callback_data: FavCallback):
+    # === ИСПРАВЛЕНИЕ ЗДЕСЬ ===
+    try:
+        # Разбираем строку по разделителю "_" вместо ":"
+        route, snt, dsnt, timeint = callback_data.id.split('_') 
+        
+        user_id = call.from_user.id
+        
+        success = db.add_favorite_route(user_id, route, snt, dsnt, timeint)
+        
+        if success:
+            await call.answer("✅ Маршрут добавлен в избранное!", show_alert=True)
+            # Убираем кнопку добавления, чтобы не жали дважды
+            await call.message.edit_reply_markup(reply_markup=None)
+        else:
+            await call.answer("Этот маршрут уже в избранном.", show_alert=True)
+            
+    except Exception as e:
+        await call.answer("Ошибка добавления.", show_alert=True)
+        print(f"Error adding fav: {e}")

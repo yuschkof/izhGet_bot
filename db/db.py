@@ -1,184 +1,152 @@
 import sqlite3
-from datetime import datetime
-import pytz
+import logging
+from contextlib import contextmanager
 
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+@contextmanager
 def connection_db():
-    return sqlite3.connect('izhGet.db')
+    conn = sqlite3.connect('izhGet.db')
+    try:
+        yield conn
+    finally:
+        conn.close()
 
+def create_tables():
+    """Создание всех необходимых таблиц при старте"""
+    with connection_db() as conn:
+        cursor = conn.cursor()
+        
+        # Таблица пользователей
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER UNIQUE,
+            user_name TEXT,
+            first_name TEXT,
+            last_name TEXT,
+            is_premium TEXT
+        )''')
+        
+        # Таблица избранного
+        # route: номер маршрута, snt: код старта, dsnt: код финиша, timeint: интервал
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS favorite_route (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            route TEXT,
+            snt TEXT,
+            dsnt TEXT,
+            timeint TEXT
+        )''')
 
-def add_user(user_info):
-    connection = connection_db()
-    cursor = connection.cursor()
+        # Таблица статистики
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS statistics (
+            day TEXT PRIMARY KEY,
+            uses INTEGER DEFAULT 0
+        )''')
+        
+        conn.commit()
 
-    if is_user_exists(user_info):
-        connection.close()
-        return
+def add_user(user_info: dict):
+    with connection_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT 1 FROM users WHERE user_id = ?', (user_info['user_id'],))
+        if cursor.fetchone():
+            return
+        
+        cursor.execute(
+            'INSERT INTO users (user_id, user_name, first_name, last_name, is_premium) VALUES (?, ?, ?, ?, ?)',
+            (user_info['user_id'], user_info['user_name'], user_info['first_name'], 
+             user_info['last_name'], str(user_info['is_premium']))
+        )
+        conn.commit()
 
-    cursor.execute('INSERT INTO users (user_id, user_name, first_name, last_name, is_premium) VALUES (?, ?, ?, ?, ?)',
-                   (user_info['user_id'], user_info['user_name'], user_info['first_name'], user_info['last_name'],
-                    user_info['is_premium']))
+# --- Избранное ---
 
-    connection.commit()
-    connection.close()
-
-
-def is_user_exists(user_info):
-    connection = connection_db()
-    cursor = connection.cursor()
-
-    cursor.execute('SELECT user_id FROM users WHERE user_id = ?', (user_info['user_id'],))
-    results = cursor.fetchall()
-    connection.close()
-    if not results:
-        return False
-    return True
-
-
-def add_favorite_route(route_info):
-    connection = connection_db()
-    cursor = connection.cursor()
-    if is_route_exists(route_info):
-        connection.close()
-        return False
-    cursor.execute('INSERT INTO favorite_route (user_id, route, snt, dsnt, timeint) VALUES (?, ?, ?, ?, ?)',
-                   (route_info['user_id'], route_info['route'], route_info['snt'], route_info['dsnt'],
-                    route_info['timeint']))
-    connection.commit()
-    connection.close()
-    return True
-
-
-def delete_favorite_route(route_info):
-    connection = connection_db()
-    cursor = connection.cursor()
-    if not is_route_exists(route_info):
-        connection.close()
-        return False
-    cursor.execute(
-        'DELETE FROM favorite_route WHERE user_id = ? AND route = ? AND snt = ? AND dsnt = ? AND timeint = ?',
-        (route_info['user_id'], route_info['route'], route_info['snt'], route_info['dsnt'],
-         route_info['timeint']))
-    connection.commit()
-    connection.close()
-    return True
-
-
-def is_route_exists(route_info):
-    connection = connection_db()
-    cursor = connection.cursor()
-
-    text = 'SELECT * FROM favorite_route WHERE user_id = ? AND route = ? AND snt = ? AND dsnt = ? AND timeint = ?'
-    cursor.execute(text, (
-        route_info['user_id'], route_info['route'], route_info['snt'], route_info['dsnt'], route_info['timeint']))
-    results = cursor.fetchall()
-    connection.close()
-    if not results:
-        return False
-    return True
-
+def add_favorite_route(user_id, route, snt, dsnt, timeint):
+    """Добавляет маршрут в избранное, если его там нет"""
+    with connection_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            'SELECT 1 FROM favorite_route WHERE user_id = ? AND route = ? AND snt = ? AND dsnt = ? AND timeint = ?',
+            (user_id, route, snt, dsnt, timeint)
+        )
+        if cursor.fetchone():
+            return False # Уже есть
+        
+        cursor.execute(
+            'INSERT INTO favorite_route (user_id, route, snt, dsnt, timeint) VALUES (?, ?, ?, ?, ?)',
+            (user_id, route, snt, dsnt, timeint)
+        )
+        conn.commit()
+        return True
 
 def get_favorite_routes(user_id):
-    connection = connection_db()
-    cursor = connection.cursor()
+    """Возвращает: (id, route, snt, dsnt, timeint, custom_name)"""
+    with connection_db() as conn:
+        cursor = conn.cursor()
+        # Теперь выбираем и custom_name
+        cursor.execute('SELECT id, route, snt, dsnt, timeint, custom_name FROM favorite_route WHERE user_id = ?', (user_id,))
+        return cursor.fetchall()
+    
+def rename_favorite_route(fav_id, new_name):
+    """Устанавливает пользовательское название для маршрута"""
+    with connection_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute('UPDATE favorite_route SET custom_name = ? WHERE id = ?', (new_name, fav_id))
+        conn.commit()
+        return cursor.rowcount > 0
 
-    cursor.execute('SELECT * FROM favorite_route WHERE user_id = ?', (user_id,))
-    results = cursor.fetchall()
-    connection.close()
-    return results
+def delete_favorite_route(fav_id):
+    """Удаляет избранное по его ID"""
+    with connection_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM favorite_route WHERE id = ?', (fav_id,))
+        conn.commit()
+        return cursor.rowcount > 0
 
+# --- Статистика ---
 
-def get_route_name(route_id):
-    connection = connection_db()
-    cursor = connection.cursor()
+def update_uses_statistics(date_str):
+    """Увеличивает счетчик использования бота на сегодня"""
+    with connection_db() as conn:
+        cursor = conn.cursor()
+        # Пытаемся обновить
+        cursor.execute('UPDATE statistics SET uses = uses + 1 WHERE day = ?', (date_str,))
+        
+        # Если ничего не обновилось (строки нет), вставляем новую
+        if cursor.rowcount == 0:
+            cursor.execute('INSERT INTO statistics (day, uses) VALUES (?, 1)', (date_str,))
+        
+        conn.commit()
 
-    cursor.execute('SELECT name FROM routes WHERE id = ?', (route_id,))
-    results = cursor.fetchall()
-    connection.close()
-    return results[0][0]
+def get_statistics():
+    """Возвращает статистику за последние 30 дней, сортируя правильно по дате"""
+    with connection_db() as conn:
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT day, uses 
+            FROM statistics 
+            ORDER BY substr(day, 7, 4) || substr(day, 4, 2) || substr(day, 1, 2) DESC 
+            LIMIT 30
+        ''')
+        return cursor.fetchall()
 
-
-def create_tabel_statistics():
-    connection = connection_db()
-    cursor = connection.cursor()
-
-    cursor.execute("""
-    CREATE TABLE if not exists "statistics" (
-        "day"	NUMERIC UNIQUE,
-	    "uses"	INTEGER
-    );
-    """)
-    connection.commit()
-    connection.close()
-
-
-def update_uses_statistics(day):
-    connection = connection_db()
-    cursor = connection.cursor()
-
-    if not is_day_exist(day):
-        create_day(day)
-
-    cursor.execute('UPDATE statistics SET uses = uses + 1 WHERE day = ?', (day, ))
-
-    connection.commit()
-    connection.close()
-
-
-def is_day_exist(day):
-    connection = connection_db()
-    cursor = connection.cursor()
-
-    text = 'SELECT * FROM statistics WHERE day = ?'
-    cursor.execute(text, (day, ))
-    results = cursor.fetchall()
-    connection.close()
-    if not results:
-        return False
-    return True
-
-
-def create_day(day):
-    connection = connection_db()
-    cursor = connection.cursor()
-
-    cursor.execute('INSERT INTO statistics (day, uses) VALUES (?, ?)',
-                   (day, 1))
-    connection.commit()
-    connection.close()
-    return True
-
-
-def get_user_count():
-    connection = connection_db()
-    cursor = connection.cursor()
-
-    cursor.execute('SELECT Count (*) as UserCount From users')
-    results = cursor.fetchall()
-    connection.close()
-    return results[0][0]
-
-
-def get_favorite_route_count():
-    connection = connection_db()
-    cursor = connection.cursor()
-
-    cursor.execute('SELECT Count (*) as FavoriteRouteCount From favorite_route')
-    results = cursor.fetchall()
-    connection.close()
-    return results[0][0]
-
-
-def get_day_usage_count():
-    connection = connection_db()
-    cursor = connection.cursor()
-
-    tz = pytz.timezone('Asia/Dubai')
-    now = datetime.now(tz)
-    current_date = now.strftime("%d.%m.%Y")
-
-    cursor.execute('SELECT uses as UsageCount From statistics WHERE day = ?', (current_date, ))
-    results = cursor.fetchall()
-    connection.close()
-    if len(results) == 0:
-        return 0
-    return results[0][0]
+def get_users_count():
+    with connection_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) FROM users')
+        return cursor.fetchone()[0]
+    
+def get_all_users():
+    """Возвращает список ID всех пользователей: [123, 456, 789]"""
+    with connection_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT user_id FROM users')
+        # fetchall возвращает список кортежей [(123,), (456,)], превращаем в плоский список
+        return [row[0] for row in cursor.fetchall()]

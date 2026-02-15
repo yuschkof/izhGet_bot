@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: izhGet_bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Сохранение базы данных
+      - ./izhGet.db:/izhget_bot/izhGet.db
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

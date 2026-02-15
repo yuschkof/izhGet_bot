@@ -1,52 +1,61 @@
 import asyncio
-import os
 import logging
+import os
+from dotenv import load_dotenv
+
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
-from dotenv import load_dotenv
-from handlers import common, new_route, favorite_route
+from aiogram.enums import ParseMode
+from aiogram.types import BotCommand, BotCommandScopeDefault
+
+# Импорт роутеров
+from handlers import common, new_route, favorite_route, admin, inline
+from middlewares import UserRegisterMiddleware
+import db.db as db
 
 async def main():
-    # Bot commands definition
-    commands = [
-        {"command": "start", "description": "Начать диалог"},
-        {"command": "new", "description": "Новый маршрут"},
-        {"command": "favorites", "description": "Избранные маршруты"},
-        {"command": "add_favorite", "description": "Добавить избранный маршрут"},
-        {"command": "delete_favorite", "description": "Удалить избранный маршрут"},
-        {"command": "developer", "description": "Создатель"},
-        {"command": "description", "description": "Описание"},
-        {"command": "help", "description": "Помощь"},
-        {"command": "dice", "description": "На удачу"}
-    ]
-    # Load environment variables
     load_dotenv()
-    bot_token = os.getenv('BOT_TOKEN')
     
-    # Configure logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-    
-    # Initialize bot and dispatcher with DefaultBotProperties
-    bot = Bot(token=bot_token, default=DefaultBotProperties(parse_mode='HTML'))
+    # 1. Инициализация БД
+    db.create_tables()
+    print("Database initialized.")
+
+    bot_token = os.getenv("BOT_TOKEN")
+    if not bot_token:
+        print("Error: BOT_TOKEN is missing in .env")
+        return
+
+    # 2. Настройка бота
+    bot = Bot(token=bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher()
-    
-    # Include routers
+
+    # 3. Регистрация Middleware
+    dp.update.outer_middleware(UserRegisterMiddleware())
+
+    # 4. Подключение роутеров
     dp.include_router(common.router)
     dp.include_router(new_route.router)
     dp.include_router(favorite_route.router)
-    
-    # Set bot commands
-    await bot.set_my_commands(commands, language_code="ru")
-    
-    # Start polling
-    try:
-        await bot.delete_webhook(drop_pending_updates=True)
-        await dp.start_polling(bot)
-    except Exception as e:
-        logging.error(f"Error starting bot: {e}")
+    dp.include_router(admin.router)
+    dp.include_router(inline.router)
 
-if __name__ == '__main__':
-    asyncio.run(main())
+    # 5. Меню команд
+    commands = [
+        BotCommand(command="start", description="Начало работы"),
+        BotCommand(command="new", description="Найти транспорт"),
+        BotCommand(command="favorites", description="Мои маршруты"),
+    ]
+    await bot.delete_my_commands()
+    await bot.set_my_commands(commands, scope=BotCommandScopeDefault(), language_code="ru")
+    await bot.set_my_commands(commands, scope=BotCommandScopeDefault())
+
+    print("Bot started!")
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Bot stopped")
