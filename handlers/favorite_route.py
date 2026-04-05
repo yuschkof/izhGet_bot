@@ -52,8 +52,8 @@ async def on_favorite_click(call: CallbackQuery, callback_data: FavCallback):
         route=route
     )
     
-    # Показываем кнопки "Переименовать" и "Удалить"
-    markup = kb.get_delete_kb(fav_id)
+    sub = db.get_subscription(user_id, fav_id)
+    markup = kb.get_delete_kb(fav_id, has_subscription=bool(sub))
     await call.message.edit_text(text_result, parse_mode="HTML", reply_markup=markup)
 
 # === ЛОГИКА ПЕРЕИМЕНОВАНИЯ ===
@@ -90,24 +90,47 @@ async def on_new_name_input(message: Message, state: FSMContext):
     
     await message.answer(f"✅ Маршрут переименован в «<b>{new_name}</b>»!", parse_mode="HTML")
     
-    # Возвращаем список избранного
     await cmd_favorites(message)
     await state.clear()
 
-# 3. Отмена переименования
+
 @router.callback_query(F.data == "cancel_rename")
 async def on_rename_cancel(call: CallbackQuery, state: FSMContext):
     await state.clear()
     await call.message.delete()
     await call.answer("Переименование отменено")
 
-# === ЛОГИКА УДАЛЕНИЯ ===
+
 @router.callback_query(FavCallback.filter(F.action == "del"))
 async def on_favorite_delete(call: CallbackQuery, callback_data: FavCallback):
     fav_id = callback_data.id
-    db.delete_favorite_route(fav_id)
+    user_id = call.from_user.id
+    db.delete_favorite_route(fav_id, user_id)
     await call.answer("Маршрут удален", show_alert=True)
     # Возвращаем обновленный список
     # await cmd_favorites(call.message) # Можно так, или просто удалить сообщение:
     await call.message.delete()
     await call.message.answer("🗑 Маршрут удален.")
+    
+
+@router.callback_query(F.data == "back_to_favorites")
+async def on_back_to_favorites(call: CallbackQuery):
+    # Берем правильный ID пользователя, который нажал на кнопку
+    user_id = call.from_user.id
+    
+    # Достаем его избранное из базы
+    favorites = db.get_favorite_routes(user_id)
+    
+    if not favorites:
+        await call.message.edit_text(
+            text="У вас пока нет избранных маршрутов. Создайте маршрут через /new и нажмите 'Добавить в избранное'.",
+            reply_markup=None
+        )
+        return
+
+    # Генерируем клавиатуру и плавно меняем текст и кнопки
+    markup = kb.get_favorites_list_kb(favorites)
+    await call.message.edit_text(
+        text="⭐ Ваши избранные маршруты:", 
+        reply_markup=markup
+    )

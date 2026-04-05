@@ -1,5 +1,6 @@
 import os
 import asyncio
+from dotenv import load_dotenv
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
@@ -11,8 +12,8 @@ import db.db as db
 
 router = Router()
 
-# Загружаем ID админа из переменных среды
-ADMIN_ID = 842331262
+load_dotenv()
+ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 
 class AdminState(StatesGroup):
     waiting_for_message = State()
@@ -36,13 +37,8 @@ def get_admin_confirm_kb():
 async def cmd_admin(message: Message, state: FSMContext):
     user_id = message.from_user.id
     
-    # ОТЛАДКА: Выводим в консоль и пользователю, кто стучится
-    print(f"Попытка входа в админку. User ID: {user_id}, Admin ID (из конфига): {ADMIN_ID}")
-    
     if not is_admin(user_id):
-        # Временно раскомментируйте строку ниже, чтобы проверить в чате
-        await message.answer(f"⛔ Вы не админ.\nВаш ID: <code>{user_id}</code>\nТребуется: <code>{ADMIN_ID}</code>")
-        return 
+        return
 
     await message.answer("📢 <b>Режим рассылки</b>\n\nПришлите сообщение...")
     await state.set_state(AdminState.waiting_for_message)

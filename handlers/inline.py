@@ -1,13 +1,12 @@
 import hashlib
-from aiogram import Router
+from aiogram import Router, Bot
 from aiogram.types import InlineQuery, InlineQueryResultArticle, InputTextMessageContent, InlineKeyboardMarkup, InlineKeyboardButton, ChosenInlineResult
-from keyboards.keyboards import get_station_name, FavCallback
+
 import db.db as db
 from request import get_result
 
 router = Router()
 
-# Хендлер 1: ПОИСК
 @router.inline_query()
 async def inline_search(query: InlineQuery):
     text = query.query.lower().strip()
@@ -29,56 +28,45 @@ async def inline_search(query: InlineQuery):
 
     for fav in favorites:
         try:
-            if len(fav) == 6:
-                fav_id, route, snt, dsnt, timeint, custom_name = fav
-            else:
-                fav_id, route, snt, dsnt, timeint = fav
-                custom_name = None
-        except:
+            # Теперь индексы такие: id(0), route(1), snt(2), dsnt(3), timeint(4), custom_name(5)
+            fav_id = fav[0]
+            route = fav[1]
+            timeint = fav[4]
+            custom_name = fav[5] if len(fav) > 5 else None
+        except IndexError:
             continue
 
-        snt_name = get_station_name(snt)
-        dsnt_name = get_station_name(dsnt)
-        title = custom_name if custom_name else f"Маршрут {route}"
-        description = f"{snt_name} ➝ {dsnt_name}"
+        # Берем красивое имя из БД. Если его там вдруг нет (до миграции), ставим заглушку.
+        title = custom_name if custom_name else f"🚌 Маршрут {route}"
+        
+        # Фильтрация (если пользователь начал вводить текст в inline-режиме)
+        if text and text not in title.lower():
+            continue
 
-        if text:
-            search_source = f"{title} {description} {route}".lower()
-            if text not in search_source:
-                continue
-
-        result_id = f"fav:{fav_id}"
-
-        # --- ИСПРАВЛЕНИЕ ЗДЕСЬ ---
-        # Обязательно добавляем кнопку, чтобы Телеграм дал нам редактировать сообщение потом
-        dummy_kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="⏳ Загрузка...", callback_data="ignore")
-        ]])
-
-        message_content = InputTextMessageContent(
-            message_text=f"⏳ <b>{title}</b>\nПодождите, получаю данные...",
-            parse_mode="HTML"
+        results.append(
+            InlineQueryResultArticle(
+                id=f"fav:{fav_id}",
+                title=title,
+                description=f"Интервал: {timeint} мин.",
+                input_message_content=InputTextMessageContent(
+                    message_text=f"⏳ Загружаю расписание: <b>{title}</b>...",
+                    parse_mode="HTML"
+                ),
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(
+                        text="Загрузка...", 
+                        callback_data="ignore"
+                    )
+                ]])
+            )
         )
-
-        item = InlineQueryResultArticle(
-            id=result_id,
-            title=f"⭐ {title}",
-            description=description,
-            input_message_content=message_content,
-            reply_markup=dummy_kb, # <--- Прикрепляем кнопку
-            thumb_url="https://cdn-icons-png.flaticon.com/512/1828/1828884.png",
-            thumb_width=48,
-            thumb_height=48
-        )
-        results.append(item)
 
     await query.answer(results, cache_time=1, is_personal=True)
 
 
-# Хендлер 2: АВТО-ЗАГРУЗКА
 @router.chosen_inline_result()
-async def on_chosen_result(chosen_result: ChosenInlineResult, bot):
-    # Если кнопки не было, ID не придет. Но теперь кнопка есть.
+async def on_chosen_inline_result(chosen_result: ChosenInlineResult, bot: Bot):
+    # Если кнопки не было, ID не придет
     if not chosen_result.inline_message_id:
         return
 
@@ -92,20 +80,27 @@ async def on_chosen_result(chosen_result: ChosenInlineResult, bot):
 
     user_id = chosen_result.from_user.id
     favorites = db.get_favorite_routes(user_id)
+    
+    # Ищем маршрут в списке
     target_fav = next((f for f in favorites if f[0] == fav_id), None)
 
     if not target_fav:
         await bot.edit_message_text(
-            text="❌ Маршрут не найден.",
+            text="❌ Маршрут не найден в базе.",
             inline_message_id=chosen_result.inline_message_id
         )
         return
 
-    if len(target_fav) == 6:
-        _, route, snt, dsnt, timeint, _ = target_fav
-    else:
-        _, route, snt, dsnt, timeint = target_fav
+    # Достаем данные для запроса (route, snt, dsnt, timeint)
+    try:
+        route = target_fav[1]
+        snt = target_fav[2]
+        dsnt = target_fav[3]
+        timeint = target_fav[4]
+    except IndexError:
+        return
 
+    # Запрашиваем расписание напрямую с сайта ИжГЭТ
     text_result = await get_result(
         timeint=timeint,
         snt=snt,
@@ -113,20 +108,17 @@ async def on_chosen_result(chosen_result: ChosenInlineResult, bot):
         route=route
     )
 
-    # Меняем кнопку "Загрузка" на "Обновить"
+    # Меняем кнопку "Загрузка..." на "Обновить"
     markup = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(
             text="🔄 Обновить", 
-            callback_data=FavCallback(action="select", id=str(fav_id)).pack()
+            callback_data=f"refresh_{fav_id}" # Обработку этой кнопки можно добавить позже
         )
     ]])
 
-    try:
-        await bot.edit_message_text(
-            text=text_result,
-            inline_message_id=chosen_result.inline_message_id,
-            parse_mode="HTML",
-            reply_markup=None
-        )
-    except Exception as e:
-        print(f"Ошибка: {e}")
+    await bot.edit_message_text(
+        text=text_result,
+        inline_message_id=chosen_result.inline_message_id,
+        reply_markup=markup,
+        parse_mode="HTML"
+    )
