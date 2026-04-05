@@ -1,0 +1,24 @@
+# Секреты и конфиги с чувствительными данными
+.env
+xray-config.json
+
+# База данных
+*.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.swp
+*.swo
+
+# Виртуальное окружение
+venv/
+.venv/
+
+# Логи
+logs/
+*.log
+
+# Claude Code
+.claude/

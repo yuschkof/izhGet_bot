@@ -6,9 +6,19 @@ from lxml import etree
 import db.db as db
 
 class TimetableParser:
-    def __init__(self, timezone: str = 'Asia/Dubai'):
+    def __init__(self, timezone: str = 'Europe/Samara'):
         self._timezone = pytz.timezone(timezone)
         self._url = 'https://xn--c1aff6b0c.xn--p1ai/rasp/load_station.php'
+        self._session: aiohttp.ClientSession | None = None
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession()
+        return self._session
+
+    async def close(self):
+        if self._session and not self._session.closed:
+            await self._session.close()
 
     def _get_current_datetime(self):
         now = datetime.now(self._timezone)
@@ -65,7 +75,7 @@ class TimetableParser:
                     # Если номер "9", бот добавит 2 пробела. Если "12" — 1 пробел.
                     # Это выровняет часы 🕒 идеально по вертикали.
                     
-                    line = f"🚌 {route:<3} 🕒 {departure_time} ➝ 🏁 {arrival_time}"
+                    line = f"🚋 {route:<3} 🕒 {departure_time} ➝ 🏁 {arrival_time}"
                     lines.append(line)
 
             lines.append("</pre>")
@@ -81,7 +91,7 @@ class TimetableParser:
 
     async def get_timetable(self, route: str, stn: str, dstn: str, timeint: str):
         current_dt = self._get_current_datetime()
-        
+
         try:
             db.update_uses_statistics(current_dt['date'])
         except Exception:
@@ -97,16 +107,89 @@ class TimetableParser:
             'timeint': timeint,
         }
 
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.post(self._url, data=data) as response:
-                    if response.status == 200:
-                        html = await response.text()
-                        return self._parse_response_table(html)
-                    return "🚫 Сайт ИжГЭТ недоступен."
-            except Exception as e:
-                return f"🚫 Ошибка сети: {e}"
+        session = await self._get_session()
+        try:
+            async with session.post(self._url, data=data) as response:
+                if response.status == 200:
+                    html = await response.text()
+                    return self._parse_response_table(html)
+                return "🚫 Сайт ИжГЭТ недоступен."
+        except Exception as e:
+            return f"🚫 Ошибка сети: {e}"
+
+    async def get_stations(self, route: str, dt: str) -> dict:
+        """
+        Получает список остановок для заданного маршрута и даты.
+        Возвращает словарь: {'id_остановки': 'Название остановки'}
+        """
+        url = 'https://xn--c1aff6b0c.xn--p1ai/rasp/list_station.php'
+        data = {
+            'route': str(route),
+            'dt': dt
+        }
+
+        session = await self._get_session()
+        try:
+            async with session.post(url, data=data) as response:
+                if response.status == 200:
+                    html = await response.text()
+                    return self._parse_stations_html(html)
+                return {}
+        except Exception as e:
+            print(f"🚫 Ошибка сети при получении остановок: {e}")
+            return {}
+
+    def _parse_stations_html(self, html_text: str) -> dict:
+        """Внутренний метод для парсинга HTML списка остановок."""
+        stations = {}
+        try:
+            html_parser = etree.HTMLParser()
+            root = etree.fromstring(html_text, html_parser)
+            
+            # Находим все теги <option>
+            options = root.findall(".//option")
+            
+            for opt in options:
+                val = opt.get("value")
+                name = opt.text
+                
+                # Отсеиваем пустые значения и пункт "выберите остановку..." (value="0")
+                if val and val != "0" and name:
+                    stations[val] = name.strip()
+                    
+            return stations
+        except Exception as e:
+            print(f"🚫 Ошибка парсинга остановок: {e}")
+            return {}
+
+    async def get_destinations(self, route: str, dt: str, stn: str) -> dict:
+        """
+        Получает список конечных остановок (пунктов назначения)
+        для заданного маршрута, даты и начальной остановки.
+        Возвращает словарь: {'id_остановки': 'Название остановки'}
+        """
+        url = 'https://xn--c1aff6b0c.xn--p1ai/rasp/list_destinations.php'
+        data = {
+            'route': str(route),
+            'dt': dt,
+            'stn': str(stn)
+        }
+
+        session = await self._get_session()
+        try:
+            async with session.post(url, data=data) as response:
+                if response.status == 200:
+                    html = await response.text()
+                    return self._parse_stations_html(html)
+                return {}
+        except Exception as e:
+            print(f"🚫 Ошибка сети при получении пунктов назначения: {e}")
+            return {}
+
+
+# Глобальный экземпляр — используется во всех хэндлерах
+parser = TimetableParser()
+
 
 async def get_result(timeint, snt, dsnt, route):
-    parser = TimetableParser()
     return await parser.get_timetable(route, snt, dsnt, timeint)
