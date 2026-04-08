@@ -147,7 +147,7 @@ def delete_favorite_route(fav_id, user_id):
 
 def _upsert_statistics(cursor, date_str):
     """Гарантирует наличие строки за дату."""
-    cursor.execute('INSERT OR IGNORE INTO statistics (day) VALUES (?)', (date_str,))
+    cursor.execute('INSERT OR IGNORE INTO statistics (day, uses) VALUES (?, 0)', (date_str,))
 
 
 def update_uses_statistics(date_str):
@@ -155,7 +155,7 @@ def update_uses_statistics(date_str):
     with connection_db() as conn:
         cursor = conn.cursor()
         _upsert_statistics(cursor, date_str)
-        cursor.execute('UPDATE statistics SET uses = uses + 1 WHERE day = ?', (date_str,))
+        cursor.execute('UPDATE statistics SET uses = COALESCE(uses, 0) + 1 WHERE day = ?', (date_str,))
         conn.commit()
 
 
