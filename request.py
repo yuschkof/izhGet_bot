@@ -109,7 +109,7 @@ class TimetableParser:
 
         session = await self._get_session()
         try:
-            async with session.post(self._url, data=data) as response:
+            async with session.post(self._url, data=data, ssl=False) as response:
                 if response.status == 200:
                     html = await response.text()
                     return self._parse_response_table(html)
@@ -130,7 +130,7 @@ class TimetableParser:
 
         session = await self._get_session()
         try:
-            async with session.post(url, data=data) as response:
+            async with session.post(url, data=data, ssl=False) as response:
                 if response.status == 200:
                     html = await response.text()
                     return self._parse_stations_html(html)
@@ -177,7 +177,7 @@ class TimetableParser:
 
         session = await self._get_session()
         try:
-            async with session.post(url, data=data) as response:
+            async with session.post(url, data=data, ssl=False) as response:
                 if response.status == 200:
                     html = await response.text()
                     return self._parse_stations_html(html)

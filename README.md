@@ -49,8 +49,6 @@ python main.py
 
 ### Docker (рекомендуется)
 
-Включает xray SOCKS5-прокси для работы в сетях с ограничениями.
-
 ```bash
 docker-compose up -d
 ```
@@ -64,20 +62,14 @@ docker-compose up -d
 ```env
 BOT_TOKEN=ваш_токен_бота
 ADMIN_ID=ваш_telegram_id
-
-# Опционально — SOCKS5/HTTP прокси
-# Если указан, бот проверит доступность и использует при наличии связи
-PROXY_URL=socks5://127.0.0.1:1080
 ```
-
-Для Docker-режима с xray создайте `xray-config.json` по образцу конфигурации Xray/V2Ray.
 
 ---
 
 ## Архитектура
 
 ```
-main.py                — Точка входа: инициализация БД, прокси, роутеры, планировщик подписок
+main.py                — Точка входа: инициализация БД, роутеры, планировщик подписок
 middlewares.py         — UserRegisterMiddleware: авторегистрация пользователей, DAU-трекинг
 request.py             — TimetableParser: HTTP-скрапер ижгэт.рф (остановки, маршруты, расписание)
 db/db.py               — SQLite-обёртка (izhGet.db): users, favorite_route, subscriptions, statistics, daily_active
@@ -122,4 +114,4 @@ keyboards/
 - [aiogram 3.x](https://github.com/aiogram/aiogram)
 - aiohttp + lxml
 - SQLite
-- Docker + [Xray-core](https://github.com/XTLS/Xray-core)
+- Docker

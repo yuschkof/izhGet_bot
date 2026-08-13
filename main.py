@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-import aiohttp
 import pytz
 from datetime import datetime
 from dotenv import load_dotenv
@@ -13,37 +12,12 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import BotCommand, BotCommandScopeDefault
 
-from aiogram.client.session.aiohttp import AiohttpSession
-from aiohttp_socks import ProxyConnector
-
 # Импорт роутеров
 from handlers import common, new_route, favorite_route, admin, inline
 from handlers import subscription
 from middlewares import UserRegisterMiddleware
 from request import parser, get_result
 import db.db as db
-
-async def get_smart_session(proxy_url: str):
-    if not proxy_url:
-        return AiohttpSession()
-
-    print(f"🔄 Проверка прокси: {proxy_url}...")
-    
-    try:
-        # Для проверки используем стандартный aiohttp без лишних коннекторов
-        timeout = aiohttp.ClientTimeout(total=5)
-        async with aiohttp.ClientSession(timeout=timeout) as test_session:
-            # aiohttp принимает прокси строкой
-            async with test_session.get("https://api.telegram.org", proxy=proxy_url, timeout=5) as resp:
-                if resp.status < 500:
-                    print("✅ Proxy is UP. Using VLESS tunnel.")
-                    # В aiogram 3.x передаем прокси через аргумент proxy
-                    return AiohttpSession(proxy=proxy_url)
-    except Exception as e:
-        print(f"❌ Proxy test failed: {e}")
-        print("⚠️ Switching to DIRECT connection.")
-        
-    return AiohttpSession()
 
 async def send_subscription_notifications(bot: Bot, notify_time: str):
     subs = db.get_due_subscriptions(notify_time)
@@ -87,12 +61,8 @@ async def main():
         print("Error: BOT_TOKEN is missing in .env")
         return
 
-    proxy_url = os.getenv("PROXY_URL")
-    session = await get_smart_session(proxy_url)
-    
     bot = Bot(
         token=bot_token, 
-        session=session,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML)
     )
 
