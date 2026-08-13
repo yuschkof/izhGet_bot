@@ -1,6 +1,6 @@
 import hashlib
-from aiogram import Router, Bot
-from aiogram.types import InlineQuery, InlineQueryResultArticle, InputTextMessageContent, InlineKeyboardMarkup, InlineKeyboardButton, ChosenInlineResult
+from aiogram import Router, Bot, F
+from aiogram.types import InlineQuery, InlineQueryResultArticle, InputTextMessageContent, InlineKeyboardMarkup, InlineKeyboardButton, ChosenInlineResult, CallbackQuery
 
 import db.db as db
 from request import get_result
@@ -112,7 +112,7 @@ async def on_chosen_inline_result(chosen_result: ChosenInlineResult, bot: Bot):
     markup = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(
             text="🔄 Обновить", 
-            callback_data=f"refresh_{fav_id}" # Обработку этой кнопки можно добавить позже
+            callback_data=f"inline_ref:{fav_id}"
         )
     ]])
 
@@ -122,3 +122,59 @@ async def on_chosen_inline_result(chosen_result: ChosenInlineResult, bot: Bot):
         reply_markup=markup,
         parse_mode="HTML"
     )
+
+@router.callback_query(F.data.startswith("inline_ref:"))
+async def on_inline_refresh(call: CallbackQuery, bot: Bot):
+    if not call.inline_message_id:
+        await call.answer("Это старое сообщение, обновите заново.", show_alert=True)
+        return
+
+    try:
+        fav_id = int(call.data.split(":")[1])
+    except (IndexError, ValueError):
+        await call.answer("Ошибка данных", show_alert=True)
+        return
+
+    user_id = call.from_user.id
+    favorites = db.get_favorite_routes(user_id)
+    target_fav = next((f for f in favorites if f[0] == fav_id), None)
+
+    if not target_fav:
+        await call.answer("Маршрут не найден", show_alert=True)
+        return
+
+    try:
+        route = target_fav[1]
+        snt = target_fav[2]
+        dsnt = target_fav[3]
+        timeint = target_fav[4]
+    except IndexError:
+        await call.answer("Ошибка данных маршрута", show_alert=True)
+        return
+
+    await call.answer("Обновляю расписание...")
+
+    text_result = await get_result(
+        timeint=timeint,
+        snt=snt,
+        dsnt=dsnt,
+        route=route
+    )
+
+    markup = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text="🔄 Обновить", 
+            callback_data=f"inline_ref:{fav_id}"
+        )
+    ]])
+
+    try:
+        await bot.edit_message_text(
+            text=text_result,
+            inline_message_id=call.inline_message_id,
+            reply_markup=markup,
+            parse_mode="HTML"
+        )
+    except Exception:
+        # Игнорируем ошибку "Message is not modified"
+        pass

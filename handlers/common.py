@@ -1,10 +1,11 @@
 import os
 from aiogram import Router, Bot, F
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup, default_state
 import db.db as db
+import keyboards.keyboards as kb
 
 router = Router()
 
@@ -76,11 +77,17 @@ async def cmd_support(message: Message, state: FSMContext):
         "✍️ <b>Напишите ваше сообщение для разработчика.</b>\n\n"
         "⚠️ <b>ВНИМАНИЕ:</b> Этот бот <b>НЕ является официальным</b> сервисом ИжГЭТ. "
         "Создатель бота не работает в транспортной компании, никак не связан с диспетчерами и <b>НЕ ЗНАЕТ</b>, почему задерживается ваш трамвай или троллейбус (все данные автоматически берутся с открытого сайта).\n\n"
-        "🛠 Если вы нашли техническую ошибку в работе самого бота (пропали кнопки, не ищется маршрут, бот завис), пожалуйста, опишите её максимально подробно. К сообщению можно прикрепить скриншот.\n\n"
-        "Для отмены нажмите /cancel",
-        parse_mode="HTML"
+        "🛠 Если вы нашли техническую ошибку в работе самого бота (пропали кнопки, не ищется маршрут, бот завис), пожалуйста, опишите её максимально подробно. К сообщению можно прикрепить скриншот.",
+        parse_mode="HTML",
+        reply_markup=kb.get_cancel_support_kb()
     )
     await state.set_state(SupportState.waiting_for_message)
+
+@router.callback_query(F.data == "cancel_support", SupportState.waiting_for_message)
+async def cancel_support_callback(call: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await call.message.edit_text("Действие отменено.", reply_markup=None)
+    await call.answer()
 
 @router.message(Command("cancel"), SupportState.waiting_for_message)
 async def cancel_support(message: Message, state: FSMContext):
@@ -95,7 +102,11 @@ async def on_support_message(message: Message, state: FSMContext, bot: Bot):
     
     try:
         # 1. Отправляем тебе инфу о том, кто пишет
-        await bot.send_message(ADMIN_ID, f"📩 <b>Новое обращение в поддержку!</b>\n\n{user_info}", parse_mode="HTML")
+        await bot.send_message(
+            ADMIN_ID, 
+            f"📩 <b>Новое обращение в поддержку!</b>\n\n{user_info}\n\n<i>💡 Чтобы ответить, сделайте Reply на это сообщение или используйте:\n<code>/reply {message.from_user.id} ваш текст</code></i>", 
+            parse_mode="HTML"
+        )
         
         # 2. Пересылаем само сообщение (copy_to поддерживает текст, фото, видео и т.д.)
         await message.copy_to(ADMIN_ID)
