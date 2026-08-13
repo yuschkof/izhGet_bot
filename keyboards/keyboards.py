@@ -1,4 +1,4 @@
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, WebAppInfo, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.filters.callback_data import CallbackData
 
@@ -43,6 +43,19 @@ def get_dynamic_stations_kb(stations_dict: dict, action: str):
     
     # Выстраиваем по 2 кнопки в ряд
     builder.adjust(2)
+    
+    # Добавляем кнопки Навигации
+    if action == 'station':
+        builder.row(
+            InlineKeyboardButton(text="🔙 Назад", callback_data="route_back_route"),
+            InlineKeyboardButton(text="❌ Отмена", callback_data="route_cancel")
+        )
+    elif action == 'dest_station':
+        builder.row(
+            InlineKeyboardButton(text="🔙 Назад", callback_data="route_back_station"),
+            InlineKeyboardButton(text="❌ Отмена", callback_data="route_cancel")
+        )
+        
     return builder.as_markup()
 
 
@@ -58,16 +71,22 @@ def get_time_keyboard():
     builder.button(text='24 час.', callback_data=TransportCallback(action='time', value='1440'))
 
     builder.adjust(3)
+    builder.row(InlineKeyboardButton(text="❌ Отмена", callback_data="route_cancel"))
     return builder.as_markup()
 
 
 def get_routes_keyboard():
     builder = InlineKeyboardBuilder()
-    routes = ['1', '10', '11', '12', '2', '3', '4', '5', '7', '8', '9', '0']
+    # Правильная (числовая) сортировка маршрутов:
+    routes = ['1', '2', '3', '4', '5', '7', '8', '9', '10', '11', '12', '0']
     for r in routes:
         text = "Все" if r == '0' else r
         builder.button(text=text, callback_data=TransportCallback(action='route', value=r))
     builder.adjust(4)
+    builder.row(
+        InlineKeyboardButton(text="🔙 Назад", callback_data="route_back_time"),
+        InlineKeyboardButton(text="❌ Отмена", callback_data="route_cancel")
+    )
     return builder.as_markup()
 
 
@@ -135,4 +154,9 @@ def get_cancel_sub_kb(fav_id):
 def get_cancel_rename_kb():
     builder = InlineKeyboardBuilder()
     builder.button(text="Отмена", callback_data="cancel_rename")
+    return builder.as_markup()
+
+def get_cancel_support_kb():
+    builder = InlineKeyboardBuilder()
+    builder.button(text="❌ Отмена", callback_data="cancel_support")
     return builder.as_markup()

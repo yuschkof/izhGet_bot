@@ -23,6 +23,38 @@ async def cmd_new(message: Message, state: FSMContext):
     await message.answer("Показать рейсы в ближайшие?", reply_markup=kb.get_time_keyboard())
     await state.set_state(RouteOrder.waiting_for_time)
 
+@router.callback_query(F.data == "route_cancel")
+async def cancel_route_flow(call: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await call.message.delete()
+    await call.answer("Отменено")
+    await call.message.answer("Поиск расписания отменен.")
+
+@router.callback_query(F.data == "route_back_time")
+async def back_to_time(call: CallbackQuery, state: FSMContext):
+    await call.message.edit_text("Показать рейсы в ближайшие?", reply_markup=kb.get_time_keyboard())
+    await state.set_state(RouteOrder.waiting_for_time)
+
+@router.callback_query(F.data == "route_back_route")
+async def back_to_route(call: CallbackQuery, state: FSMContext):
+    await call.message.edit_text("Выберите маршрут:", reply_markup=kb.get_routes_keyboard())
+    await state.set_state(RouteOrder.waiting_for_route)
+
+@router.callback_query(F.data == "route_back_station")
+async def back_to_station(call: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    route = data.get('route')
+    await call.message.edit_text("⏳ Загружаю список остановок...", reply_markup=None)
+    current_dt = parser._get_current_datetime()['date']
+    stations = await parser.get_stations(route=route, dt=current_dt)
+    if not stations:
+        await call.message.edit_text("🚫 Не удалось загрузить остановки. Попробуйте позже.")
+        await state.clear()
+        return
+    markup = kb.get_dynamic_stations_kb(stations, action='station')
+    await call.message.edit_text("Выберите начальную остановку:", reply_markup=markup)
+    await state.set_state(RouteOrder.waiting_for_start)
+
 @router.callback_query(TransportCallback.filter(F.action == "time"))
 async def on_time_selected(call: CallbackQuery, callback_data: TransportCallback, state: FSMContext):
     await state.update_data(timeint=callback_data.value)
