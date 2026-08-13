@@ -17,16 +17,16 @@ pip install -r requirements.txt
 # Run directly
 python main.py
 
-# Run with Docker (includes xray SOCKS5 proxy)
+# Run with Docker
 docker-compose up -d
 ```
 
-`.env` must contain `BOT_TOKEN`. Optionally `PROXY_URL` (SOCKS5/HTTP) — if set, the bot tests connectivity and uses it only if reachable, otherwise falls back to direct.
+`.env` must contain `BOT_TOKEN`.
 
 ## Architecture
 
 ```
-main.py              — Bot entry point: DB init, proxy detection, router registration
+main.py              — Bot entry point: DB init, router registration
 middlewares.py       — UserRegisterMiddleware: auto-registers every user on first interaction
 request.py           — TimetableParser: HTTP scraper for ижгэт.рф (stations, destinations, timetable)
 db/db.py             — SQLite wrapper (izhGet.db): users, favorite_route, statistics tables
