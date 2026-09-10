@@ -52,18 +52,16 @@ class TimetableParser:
             else:
                 lines.append("🚏 <b>Расписание</b>")
 
-            lines.append("➖➖➖➖➖➖➖➖")
-            lines.append("⚠️ <i>Внимание: на сайте ИжГЭТ ведутся тех. работы, расписание может быть неточным.</i>")
-            lines.append("➖➖➖➖➖➖➖➖")
+            lines.append("<blockquote>⚠️ <i>Внимание: на сайте ИжГЭТ ведутся тех. работы, расписание может быть неточным.</i></blockquote>")
             
-            # --- СПИСОК (Моноширинный текст для выравнивания) ---
-            # Открываем тег <pre>, чтобы цифры встали ровно друг под другом
-            lines.append("<pre>") 
+            # --- СПИСОК (Таблица Bot API 10.3) ---
+            lines.append("<table compact bordered striped>")
+            lines.append("<tr><th>Маршрут</th><th>Отправление</th><th>Прибытие</th></tr>")
 
             rows = table.findall(".//tr")[1:] 
             
             if not rows:
-                lines.append(" Рейсов не найдено")
+                lines.append("<tr><td colspan=\"3\" align=\"center\">Рейсов не найдено</td></tr>")
 
             for row in rows:
                 cells = row.findall(".//td")
@@ -72,18 +70,12 @@ class TimetableParser:
                     departure_time = cells[2].text.strip()
                     arrival_time = cells[3].text.strip()
                     
-                    # МАГИЯ ВЫРАВНИВАНИЯ:
-                    # {route:<3} — означает "занять под номер маршрута ровно 3 символа".
-                    # Если номер "9", бот добавит 2 пробела. Если "12" — 1 пробел.
-                    # Это выровняет часы 🕒 идеально по вертикали.
-                    
-                    line = f"🚋 {route:<3} 🕒 {departure_time} ➝ 🏁 {arrival_time}"
+                    line = f"<tr><td align=\"center\">🚋 {route}</td><td align=\"center\">{departure_time}</td><td align=\"center\">🏁 {arrival_time}</td></tr>"
                     lines.append(line)
 
-            lines.append("</pre>")
+            lines.append("</table>")
             # --- ПОДВАЛ (Обычный текст) ---
             
-            lines.append("➖➖➖➖➖➖➖➖")
             lines.append("<i>Время местное</i>")
             
             return '\n'.join(lines)

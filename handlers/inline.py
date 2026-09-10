@@ -1,6 +1,6 @@
 import hashlib
 from aiogram import Router, Bot, F
-from aiogram.types import InlineQuery, InlineQueryResultArticle, InputTextMessageContent, InlineKeyboardMarkup, InlineKeyboardButton, ChosenInlineResult, CallbackQuery
+from aiogram.types import InlineQuery, InlineQueryResultArticle, InputTextMessageContent, InputRichMessageContent, InputRichMessage, InlineKeyboardMarkup, InlineKeyboardButton, ChosenInlineResult, CallbackQuery
 
 import db.db as db
 from request import get_result
@@ -48,9 +48,8 @@ async def inline_search(query: InlineQuery):
                 id=f"fav:{fav_id}",
                 title=title,
                 description=f"Интервал: {timeint} мин.",
-                input_message_content=InputTextMessageContent(
-                    message_text=f"⏳ Загружаю расписание: <b>{title}</b>...",
-                    parse_mode="HTML"
+                input_message_content=InputRichMessageContent(
+                    rich_message=InputRichMessage(html=f"⏳ Загружаю расписание: <b>{title}</b>...")
                 ),
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
                     InlineKeyboardButton(
@@ -108,19 +107,23 @@ async def on_chosen_inline_result(chosen_result: ChosenInlineResult, bot: Bot):
         route=route
     )
 
-    # Меняем кнопку "Загрузка..." на "Обновить"
+    # Меняем кнопку "Загрузка..." на "Обновить" и "Поддержать"
     markup = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(
             text="🔄 Обновить", 
             callback_data=f"inline_ref:{fav_id}"
+        ),
+        InlineKeyboardButton(
+            text="💖 Донат",
+            url="https://t.me/tribute/app?startapp=dzqK"
         )
     ]])
 
+    from aiogram.types import InputRichMessage
     await bot.edit_message_text(
-        text=text_result,
         inline_message_id=chosen_result.inline_message_id,
-        reply_markup=markup,
-        parse_mode="HTML"
+        rich_message=InputRichMessage(html=text_result),
+        reply_markup=markup
     )
 
 @router.callback_query(F.data.startswith("inline_ref:"))
@@ -165,15 +168,19 @@ async def on_inline_refresh(call: CallbackQuery, bot: Bot):
         InlineKeyboardButton(
             text="🔄 Обновить", 
             callback_data=f"inline_ref:{fav_id}"
+        ),
+        InlineKeyboardButton(
+            text="💖 Донат",
+            url="https://t.me/tribute/app?startapp=dzqK"
         )
     ]])
 
     try:
+        from aiogram.types import InputRichMessage
         await bot.edit_message_text(
-            text=text_result,
             inline_message_id=call.inline_message_id,
-            reply_markup=markup,
-            parse_mode="HTML"
+            rich_message=InputRichMessage(html=text_result),
+            reply_markup=markup
         )
     except Exception:
         # Игнорируем ошибку "Message is not modified"
