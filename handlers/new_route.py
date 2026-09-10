@@ -112,7 +112,13 @@ async def on_end_selected(call: CallbackQuery, callback_data: TransportCallback,
     # Кнопка добавления в избранное
     markup = kb.get_after_result_kb(data['route'], data['snt'], dsnt, data['timeint'])
     
-    await call.message.edit_text(text_result, parse_mode="HTML", reply_markup=markup)
+    from aiogram.types import InputRichMessage
+    await call.message.bot.edit_message_text(
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
+        rich_message=InputRichMessage(html=text_result),
+        reply_markup=markup
+    )
     await state.clear()
 
 @router.callback_query(FavCallback.filter(F.action == "refresh"))
@@ -126,7 +132,13 @@ async def on_refresh_schedule(call: CallbackQuery, callback_data: FavCallback):
     await call.answer("Обновляю...")
     text_result = await get_result(timeint=timeint, snt=snt, dsnt=dsnt, route=route)
     markup = kb.get_after_result_kb(route, snt, dsnt, timeint)
-    await call.message.edit_text(text_result, parse_mode="HTML", reply_markup=markup)
+    from aiogram.types import InputRichMessage
+    await call.message.bot.edit_message_text(
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
+        rich_message=InputRichMessage(html=text_result),
+        reply_markup=markup
+    )
 
 
 @router.callback_query(FavCallback.filter(F.action == "add"))

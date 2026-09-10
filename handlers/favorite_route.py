@@ -25,7 +25,12 @@ async def cmd_favorites(message: Message):
         return
 
     markup = kb.get_favorites_list_kb(favorites)
-    await message.answer("⭐ Ваши избранные маршруты:", reply_markup=markup)
+    from aiogram.types import InputRichMessage
+    await message.bot.send_rich_message(
+        chat_id=message.chat.id,
+        rich_message=InputRichMessage(html="<h2>⭐ Ваши избранные маршруты:</h2>"),
+        reply_markup=markup
+    )
 
 @router.callback_query(FavCallback.filter(F.action == "select"))
 async def on_favorite_click(call: CallbackQuery, callback_data: FavCallback):
@@ -54,7 +59,13 @@ async def on_favorite_click(call: CallbackQuery, callback_data: FavCallback):
     
     sub = db.get_subscription(user_id, fav_id)
     markup = kb.get_delete_kb(fav_id, has_subscription=bool(sub))
-    await call.message.edit_text(text_result, parse_mode="HTML", reply_markup=markup)
+    from aiogram.types import InputRichMessage
+    await call.message.bot.edit_message_text(
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
+        rich_message=InputRichMessage(html=text_result),
+        reply_markup=markup
+    )
 
 # === ЛОГИКА ПЕРЕИМЕНОВАНИЯ ===
 
@@ -65,10 +76,16 @@ async def on_rename_ask(call: CallbackQuery, callback_data: FavCallback, state: 
     # Запоминаем ID маршрута, который хотим переименовать
     await state.update_data(editing_fav_id=fav_id)
     
-    await call.message.edit_text(
-        "✍️ Введите новое название для этого маршрута:\n"
-        "(например: <i>Домой</i> или <i>На работу</i>)",
-        parse_mode="HTML",
+    from aiogram.types import InputRichMessage
+    text = (
+        "<h3>✍️ Переименование маршрута</h3>\n"
+        "<p>Введите новое название для этого маршрута:</p>\n"
+        "<blockquote><i>Например: Домой или На работу</i></blockquote>"
+    )
+    await call.bot.edit_message_text(
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
+        rich_message=InputRichMessage(html=text),
         reply_markup=kb.get_cancel_rename_kb()
     )
     await state.set_state(FavEdit.waiting_for_new_name)
@@ -106,11 +123,9 @@ async def on_favorite_delete(call: CallbackQuery, callback_data: FavCallback):
     fav_id = callback_data.id
     user_id = call.from_user.id
     db.delete_favorite_route(fav_id, user_id)
-    await call.answer("Маршрут удален", show_alert=True)
-    # Возвращаем обновленный список
-    # await cmd_favorites(call.message) # Можно так, или просто удалить сообщение:
+    
+    await call.answer("🗑 Маршрут удален", show_alert=True)
     await call.message.delete()
-    await call.message.answer("🗑 Маршрут удален.")
     
 
 @router.callback_query(F.data == "back_to_favorites")
@@ -130,7 +145,10 @@ async def on_back_to_favorites(call: CallbackQuery):
 
     # Генерируем клавиатуру и плавно меняем текст и кнопки
     markup = kb.get_favorites_list_kb(favorites)
-    await call.message.edit_text(
-        text="⭐ Ваши избранные маршруты:", 
+    from aiogram.types import InputRichMessage
+    await call.message.bot.edit_message_text(
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
+        rich_message=InputRichMessage(html="<h2>⭐ Ваши избранные маршруты:</h2>"),
         reply_markup=markup
     )

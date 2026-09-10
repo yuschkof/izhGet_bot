@@ -16,23 +16,52 @@ class SupportState(StatesGroup):
 
 @router.message(Command("start"))
 async def cmd_start(message: Message):
-    await message.answer(
-        f"Привет, {message.from_user.first_name}! 👋\n\n"
-        "Я бот для просмотра расписания транспорта ИжГЭТ.\n"
-        "Помогаю быстро узнать, когда приедет твой трамвай или троллейбус.\n\n"
-        "⚠️ <b>Важно:</b> Я не являюсь официальным ботом ИжГЭТ. "
-        "Данные берутся с открытого сайта, поэтому я не несу ответственности за возможные неточности в расписании или опоздания транспорта.\n\n"
-        "🔎 Жми /new — найти маршрут\n"
-        "⭐ Жми /favorites — сохраненные маршруты"
+    text = (
+        f"<h1>Привет, {message.from_user.first_name}! 👋</h1>"
+        "Я бот для просмотра расписания транспорта ИжГЭТ.<br>"
+        "Помогаю быстро узнать, когда приедет твой трамвай или троллейбус.<br><br>"
+        "<blockquote>⚠️ <b>Важно:</b> Я не являюсь официальным ботом ИжГЭТ. "
+        "Данные берутся с открытого сайта, поэтому я не несу ответственности за возможные неточности в расписании или опоздания транспорта.</blockquote>\n"
+        "<h3>Команды:</h3>"
+        "🔎 Жми /new — найти маршрут<br>"
+        "⭐ Жми /favorites — сохраненные маршруты<br>"
+        "💖 Жми /donate — поддержать проект"
+    )
+    from aiogram.types import InputRichMessage
+    await message.bot.send_rich_message(
+        chat_id=message.chat.id,
+        rich_message=InputRichMessage(html=text)
     )
 
 @router.message(Command("help"))
 async def cmd_help(message: Message):
+    text = (
+        "<h1>Частые вопросы (FAQ)</h1>\n"
+        "<details><summary>▶️ <b>Как искать расписание?</b></summary>\n"
+        "Используйте команду /new. Бот предложит выбрать временной интервал, нужный маршрут, а затем начальную и конечную остановки.\n</details>\n"
+        "<details><summary>▶️ <b>Как добавить в избранное?</b></summary>\n"
+        "После того как вы нашли нужный рейс через /new, под расписанием появится кнопка «⭐ Добавить в избранное». Нажмите её, и маршрут появится в меню /favorites.\n</details>\n"
+        "<details><summary>▶️ <b>Как работают подписки?</b></summary>\n"
+        "Зайдите в /favorites, нажмите на любой маршрут и выберите «🔔 Подписаться». Выберите время, и бот будет каждый день присылать расписание в нужный момент!\n</details>\n"
+        "<details><summary>▶️ <b>Почему расписание не совпадает?</b></summary>\n"
+        "Бот берет данные с официального сайта ИжГЭТ. Иногда сайт может не работать или данные обновляются с задержкой (например, из-за пробок или тех. причин). Бот только отображает то, что есть на сайте.\n</details>\n"
+        "<details><summary>▶️ <b>Как связаться с разработчиком?</b></summary>\n"
+        "Используйте команду /support, чтобы написать сообщение разработчику. Вы также можете поддержать проект через /donate!\n</details>"
+    )
+    from aiogram.types import InputRichMessage
+    await message.bot.send_rich_message(
+        chat_id=message.chat.id,
+        rich_message=InputRichMessage(html=text)
+    )
+
+@router.message(Command("donate"))
+async def cmd_donate(message: Message):
     await message.answer(
-        "Команды бота:\n"
-        "/new - Поиск расписания\n"
-        "/favorites - Избранное\n"
-        "/support - Написать администратору\n"
+        "💖 <b>Поддержать проект</b>\n\n"
+        "Если бот оказался вам полезен, вы можете поддержать его разработку и оплату серверов:\n"
+        "👉 <a href='https://t.me/tribute/app?startapp=dzqK'>Сделать донат через Tribute</a>\n\n"
+        "Спасибо за вашу поддержку! 🥰",
+        disable_web_page_preview=True
     )
 
 @router.message(Command("stat"))
@@ -45,11 +74,12 @@ async def cmd_stat(message: Message):
     subscriptions_count = db.get_subscriptions_count()
     stats_data = db.get_statistics()
 
-    text = "📊 <b>Статистика бота</b>\n\n"
-    text += f"👥 Пользователей: {users_count}\n"
-    text += f"⭐ Сохранённых маршрутов: {favorites_count}\n"
-    text += f"🔔 Активных подписок: {subscriptions_count}\n\n"
-    text += "📅 Активность за последние 10 дней:\n"
+    text = "<h1>📊 Статистика бота</h1>"
+    text += f"👥 Пользователей: <b>{users_count}</b><br>"
+    text += f"⭐ Сохранённых маршрутов: <b>{favorites_count}</b><br>"
+    text += f"🔔 Активных подписок: <b>{subscriptions_count}</b><br><br>"
+    
+    text += "<details><summary>📅 <b>Активность за последние 10 дней</b></summary>\n<pre>"
 
     if not stats_data:
         text += "Нет данных."
@@ -61,12 +91,17 @@ async def cmd_stat(message: Message):
             dau = row[4] if len(row) > 4 else 0
             text += f"• {day}: {uses} запр., {dau} польз."
             if new_users:
-                text += f", +{new_users} новых"
+                text += f", +{new_users} нов."
             if unknown:
-                text += f", {unknown} непоняток"
+                text += f", {unknown} неп."
             text += "\n"
             
-    await message.answer(text, parse_mode="HTML")
+    text += "</pre></details>"
+    from aiogram.types import InputRichMessage
+    await message.bot.send_rich_message(
+        chat_id=message.chat.id,
+        rich_message=InputRichMessage(html=text)
+    )
     
 
 # --- ЛОГИКА ОБРАЩЕНИЯ К АДМИНУ ---
@@ -131,6 +166,7 @@ async def on_unknown_message(message: Message):
         "Используйте команды:\n"
         "/new — найти расписание\n"
         "/favorites — мои маршруты\n"
-        "/help — справка\n\n"
+        "/help — справка\n"
+        "/donate — поддержать проект\n\n"
         "Если нашли ошибку или есть вопрос — /support"
     )

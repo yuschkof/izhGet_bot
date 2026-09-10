@@ -110,6 +110,9 @@ def get_favorites_list_kb(user_routes):
     return builder.as_markup()
 
 
+DONATE_URL = "https://t.me/tribute/app?startapp=dzqK"
+
+
 def get_after_result_kb(route, snt, dsnt, timeint, is_favorite=False):
     """Кнопка под расписанием"""
     builder = InlineKeyboardBuilder()
@@ -120,6 +123,13 @@ def get_after_result_kb(route, snt, dsnt, timeint, is_favorite=False):
 
     data_str = make_fav_add_data(route, snt, dsnt, timeint)
     builder.button(text="🔄 Обновить", callback_data=FavCallback(action='refresh', id=data_str))
+    builder.button(text="💖 Поддержать автора", url=DONATE_URL)
+
+    if not is_favorite:
+        builder.adjust(2, 1)
+    else:
+        builder.adjust(1, 1)
+
     return builder.as_markup()
 
 
@@ -129,8 +139,9 @@ def get_delete_kb(fav_id, has_subscription=False):
     builder.button(text="❌ Удалить", callback_data=FavCallback(action='del', id=str(fav_id)))
     sub_text = "🔕 Подписка активна" if has_subscription else "🔔 Подписаться"
     builder.button(text=sub_text, callback_data=SubCallback(action='ask', id=str(fav_id)))
+    builder.button(text="💖 Поддержать автора", url=DONATE_URL)
     builder.button(text="🔙 Назад к списку", callback_data="back_to_favorites")
-    builder.adjust(2, 1, 1)
+    builder.adjust(2, 1, 1, 1)
     return builder.as_markup()
 
 

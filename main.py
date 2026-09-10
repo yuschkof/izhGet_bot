@@ -28,12 +28,19 @@ async def send_subscription_notifications(bot: Bot, notify_time: str):
             if not target:
                 continue
             _, route, snt, dsnt, timeint, custom_name = target
-            text = await get_result(timeint=timeint, snt=snt, dsnt=dsnt, route=route)
+            html_text = await get_result(timeint=timeint, snt=snt, dsnt=dsnt, route=route)
             name = custom_name or f"Маршрут {route}"
-            await bot.send_message(
-                user_id,
-                f"🔔 <b>{name}</b>\n\n{text}",
-                parse_mode="HTML"
+            
+            from aiogram.types import InputRichMessage, InlineKeyboardMarkup, InlineKeyboardButton
+            rich_msg = InputRichMessage(html=f"🔔 <b>{name}</b><br><br>{html_text}")
+            markup = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="💖 Поддержать автора", url="https://t.me/tribute/app?startapp=dzqK")
+            ]])
+            
+            await bot.send_rich_message(
+                chat_id=user_id,
+                rich_message=rich_msg,
+                reply_markup=markup
             )
         except Exception as e:
             print(f"Ошибка рассылки подписки sub_id={sub_id}: {e}")
@@ -85,6 +92,7 @@ async def main():
         BotCommand(command="new", description="Найти транспорт"),
         BotCommand(command="favorites", description="Мои маршруты"),
         BotCommand(command="support", description="Вопрос разработчику"),
+        BotCommand(command="donate", description="Поддержать проект"),
     ]
     
     try:
