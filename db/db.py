@@ -249,7 +249,7 @@ SUBSCRIPTION_COLUMNS = 'id, user_id, fav_id, notify_time, is_active, mode, days,
 def add_subscription(user_id, fav_id, notify_time, mode='schedule', days='all', lead_min=None):
     """Добавляет или обновляет подписку. Возвращает ID записи.
 
-    При изменении сбрасывает ещё не отправленное напоминание — планировщик пересчитает его.
+    При изменении удаляет все напоминания подписки — планировщик пересчитает её с новыми настройками, в том числе сегодня.
     """
     with connection_db() as conn:
         cursor = conn.cursor()
@@ -263,7 +263,7 @@ def add_subscription(user_id, fav_id, notify_time, mode='schedule', days='all', 
                 'UPDATE subscriptions SET notify_time = ?, mode = ?, days = ?, lead_min = ?, is_active = 1 WHERE id = ?',
                 (notify_time, mode, days, lead_min, existing[0])
             )
-            cursor.execute("DELETE FROM reminder_runs WHERE sub_id = ? AND status = 'planned'", (existing[0],))
+            cursor.execute("DELETE FROM reminder_runs WHERE sub_id = ?", (existing[0],))
             conn.commit()
             return existing[0]
         cursor.execute(

@@ -55,7 +55,7 @@ def test_get_due_runs_and_claim(tmp_db):
     assert db.get_due_runs("2026-10-26", "08:30") == []
 
 
-def test_changing_subscription_resets_planned_run_only(tmp_db):
+def test_changing_subscription_clears_all_runs(tmp_db):
     sub_id = db.add_subscription(5, 7, "08:00", mode="remind", days="all", lead_min=10)
     db.add_run(sub_id, 5, "2026-10-25", "07:57", "08:07", "1", None, "sent")
     db.add_run(sub_id, 5, "2026-10-26", "07:57", "08:07", "1", None, "planned")
@@ -63,7 +63,21 @@ def test_changing_subscription_resets_planned_run_only(tmp_db):
     db.add_subscription(5, 7, "08:00", mode="remind", days="all", lead_min=5)
 
     assert db.get_run(sub_id, "2026-10-26") is None
-    assert db.get_run(sub_id, "2026-10-25")[1] == "sent"
+    assert db.get_run(sub_id, "2026-10-25") is None
+
+
+def test_get_due_runs_excludes_skipped(tmp_db):
+    sub_id = db.add_subscription(5, 7, "08:00", mode="remind", days="all", lead_min=10)
+    db.add_run(sub_id, 5, "2026-10-26", "07:57", "08:07", "1", None, "skipped")
+    assert db.get_due_runs("2026-10-26", "08:00") == []
+
+
+def test_switch_remind_to_schedule_clears_runs(tmp_db):
+    sub_id = db.add_subscription(5, 7, "08:00", mode="remind", days="all", lead_min=10)
+    db.add_run(sub_id, 5, "2026-10-26", "07:57", "08:07", "1", None, "planned")
+    db.add_subscription(5, 7, "07:30")
+    assert db.get_run(sub_id, "2026-10-26") is None
+    assert db.get_remind_subscriptions() == []
 
 
 def test_delete_subscription_removes_runs(tmp_db):
