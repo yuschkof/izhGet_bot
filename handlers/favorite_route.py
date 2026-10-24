@@ -56,8 +56,7 @@ async def on_favorite_click(call: CallbackQuery, callback_data: FavCallback):
         route=route
     )
     
-    sub = db.get_subscription(user_id, fav_id)
-    markup = kb.get_delete_kb(fav_id, has_subscription=bool(sub))
+    markup = kb.get_delete_kb(fav_id, db.get_subscription(user_id, fav_id))
     await call.message.bot.edit_message_text(
         chat_id=call.message.chat.id,
         message_id=call.message.message_id,

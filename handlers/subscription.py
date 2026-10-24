@@ -25,8 +25,7 @@ async def _show_favorite(call: CallbackQuery, user_id: int, fav_id: int):
     _, route, snt, dsnt, timeint, _ = target
     await call.message.edit_text("⏳ Загружаю расписание...", reply_markup=None)
     text_result = await get_result(timeint=timeint, snt=snt, dsnt=dsnt, route=route)
-    sub = db.get_subscription(user_id, fav_id)
-    markup = kb.get_delete_kb(fav_id, has_subscription=bool(sub))
+    markup = kb.get_delete_kb(fav_id, db.get_subscription(user_id, fav_id))
     # Расписание содержит <table> — его понимает только rich_message
     await call.bot.edit_message_text(
         chat_id=call.message.chat.id,

@@ -2,6 +2,8 @@ from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.filters.callback_data import CallbackData
 
+import reminders
+
 # --- Фабрики колбэков ---
 class TransportCallback(CallbackData, prefix="tr"):
     action: str  # 'time', 'route', 'station'
@@ -12,8 +14,8 @@ class FavCallback(CallbackData, prefix="fav"):
     id: str
 
 class SubCallback(CallbackData, prefix="sub"):
-    action: str  # 'ask', 'del'
-    id: str      # fav_id или sub_id
+    action: str  # 'ask', 'edit', 'del', 'mode', 'days', 'lead'
+    id: str      # fav_id; для 'del' — "sub_id_fav_id"; для 'mode'/'days'/'lead' — выбранное значение
 
 def make_fav_add_data(route, snt, dsnt, timeint):
     return f"{route}_{snt}_{dsnt}_{timeint}"
@@ -156,11 +158,12 @@ def get_after_result_kb(route, snt, dsnt, timeint, is_favorite=False):
     return builder.as_markup()
 
 
-def get_delete_kb(fav_id, has_subscription=False):
+def get_delete_kb(fav_id, sub=None):
+    """sub — строка из db.get_subscription (или None, если подписки нет)."""
     builder = InlineKeyboardBuilder()
     builder.button(text="✏️ Переименовать", callback_data=FavCallback(action='rename_ask', id=str(fav_id)))
     builder.button(text="❌ Удалить", callback_data=FavCallback(action='del', id=str(fav_id)))
-    sub_text = "🔕 Подписка активна" if has_subscription else "🔔 Подписаться"
+    sub_text = reminders.sub_button_text(sub[5], sub[3]) if sub else "🔔 Подписаться"
     builder.button(text=sub_text, callback_data=SubCallback(action='ask', id=str(fav_id)))
     builder.button(text="💖 Поддержать автора", url=DONATE_URL)
     builder.button(text="🔙 Назад к списку", callback_data="back_to_favorites")
@@ -173,7 +176,7 @@ def get_sub_manage_kb(sub_id, fav_id):
     builder = InlineKeyboardBuilder()
     # id кодирует оба значения, чтобы после удаления вернуться к маршруту
     builder.button(text="🔕 Отписаться", callback_data=SubCallback(action='del', id=f"{sub_id}_{fav_id}"))
-    builder.button(text="✏️ Изменить время", callback_data=SubCallback(action='edit', id=str(fav_id)))
+    builder.button(text="✏️ Изменить", callback_data=SubCallback(action='edit', id=str(fav_id)))
     builder.button(text="🔙 Назад", callback_data=f"sub_back_{fav_id}")
     builder.adjust(2, 1)
     return builder.as_markup()
@@ -182,6 +185,42 @@ def get_sub_manage_kb(sub_id, fav_id):
 def get_cancel_sub_kb(fav_id):
     builder = InlineKeyboardBuilder()
     builder.button(text="Отмена", callback_data=f"sub_back_{fav_id}")
+    return builder.as_markup()
+
+
+def get_sub_mode_kb(fav_id):
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📋 Расписание", callback_data=SubCallback(action='mode', id=reminders.MODE_SCHEDULE))
+    builder.button(text="🚶 Напоминание", callback_data=SubCallback(action='mode', id=reminders.MODE_REMIND))
+    builder.button(text="Отмена", callback_data=f"sub_back_{fav_id}")
+    builder.adjust(2, 1)
+    return builder.as_markup()
+
+
+def get_sub_days_kb(fav_id):
+    builder = InlineKeyboardBuilder()
+    for key, label in reminders.DAYS_LABELS.items():
+        builder.button(text=label, callback_data=SubCallback(action='days', id=key))
+    builder.button(text="Отмена", callback_data=f"sub_back_{fav_id}")
+    builder.adjust(3, 1)
+    return builder.as_markup()
+
+
+def get_sub_lead_kb(fav_id):
+    builder = InlineKeyboardBuilder()
+    for minutes in reminders.LEAD_CHOICES:
+        builder.button(text=str(minutes), callback_data=SubCallback(action='lead', id=str(minutes)))
+    builder.button(text="Отмена", callback_data=f"sub_back_{fav_id}")
+    builder.adjust(len(reminders.LEAD_CHOICES), 1)
+    return builder.as_markup()
+
+
+def get_reminder_kb(fav_id):
+    """Под напоминанием «пора выходить»: открыть маршрут и донат."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📋 Полное расписание", callback_data=FavCallback(action='select', id=str(fav_id)))
+    builder.button(text="💖 Поддержать автора", url=DONATE_URL)
+    builder.adjust(2)
     return builder.as_markup()
 
 
