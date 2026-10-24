@@ -103,3 +103,20 @@ async def test_get_departures_http_error(monkeypatch):
 async def test_get_departures_network_error(monkeypatch):
     p = _parser_with(monkeypatch, FakeHttp(error=aiohttp.ClientError("boom")))
     assert await p.get_departures("1", "1900", "900", "26.10.2026", "08:00", 60) is None
+
+
+def test_parse_departures_header_only_table():
+    html_text = "X<table border=1><tr><td>h</td><td>h</td><td>h</td><td>h</td></tr></table>"
+    assert request.parse_departures(html_text) == []
+
+
+def test_parse_departures_unknown_row_format():
+    html_text = ("X<table border=1><tr><td>h</td><td>h</td><td>h</td><td>h</td></tr>"
+                 "<tr><td>1</td><td>x</td><td>08:15</td><td>08:40</td><td>extra</td></tr></table>")
+    assert request.parse_departures(html_text) is None
+
+
+async def test_get_departures_no_trips_end_to_end(monkeypatch, fixture_html):
+    http = FakeHttp(FakeResponse(200, fixture_html("timetable_no_trips.html")))
+    p = _parser_with(monkeypatch, http)
+    assert await p.get_departures("1", "1900", "900", "26.10.2026", "08:00", 60) == []

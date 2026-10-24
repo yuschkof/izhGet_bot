@@ -28,20 +28,23 @@ def _cell_text(cell) -> str:
 NO_TRIPS_XPATH = ".//font[@color='RED'][@size='3']"
 
 
-def _departures_from_root(root):
+def _departures_from_root(root) -> list[Departure] | None:
     """Рейсы из таблицы ответа. None — таблицы нет (неизвестный формат)."""
     table = root.find(".//table")
     if table is None or len(table) == 0:
         return None
+    rows = table.findall(".//tr")[1:]
     departures = []
-    for row in table.findall(".//tr")[1:]:
+    for row in rows:
         cells = row.findall(".//td")
         if len(cells) == 4:
             departures.append(Departure(_cell_text(cells[0]), _cell_text(cells[2]), _cell_text(cells[3])))
+    if rows and not departures:
+        return None  # строки есть, но формат не распознан — сайт изменил таблицу
     return departures
 
 
-def parse_departures(response_text: str):
+def parse_departures(response_text: str) -> list[Departure] | None:
     """Рейсы из ответа load_station.php: [] — «рейсов нет», None — ответ не разобран."""
     try:
         root = etree.fromstring(response_text, etree.HTMLParser())
@@ -176,10 +179,11 @@ class TimetableParser:
                 if response.status != 200:
                     logger.warning("ИжГЭТ ответил статусом %s на запрос рейсов", response.status)
                     return None
-                return parse_departures(await response.text())
+                text = await response.text()
         except Exception as e:
             logger.warning("Ошибка сети при запросе рейсов: %r", e)
             return None
+        return parse_departures(text)
 
     async def get_stations(self, route: str, dt: str) -> dict:
         """
