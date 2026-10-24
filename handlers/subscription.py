@@ -1,6 +1,6 @@
 import re
 from aiogram import Router, F
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message, InputRichMessage
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
@@ -18,8 +18,7 @@ class SubEdit(StatesGroup):
 
 async def _show_favorite(call: CallbackQuery, user_id: int, fav_id: int):
     """Загружает и показывает расписание избранного маршрута."""
-    favorites = db.get_favorite_routes(user_id)
-    target = next((f for f in favorites if f[0] == fav_id), None)
+    target = db.get_favorite(user_id, fav_id)
     if not target:
         await call.message.edit_text("❌ Маршрут не найден.", reply_markup=None)
         return
@@ -28,7 +27,13 @@ async def _show_favorite(call: CallbackQuery, user_id: int, fav_id: int):
     text_result = await get_result(timeint=timeint, snt=snt, dsnt=dsnt, route=route)
     sub = db.get_subscription(user_id, fav_id)
     markup = kb.get_delete_kb(fav_id, has_subscription=bool(sub))
-    await call.message.edit_text(text_result, parse_mode="HTML", reply_markup=markup)
+    # Расписание содержит <table> — его понимает только rich_message
+    await call.bot.edit_message_text(
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
+        rich_message=InputRichMessage(html=text_result),
+        reply_markup=markup
+    )
 
 
 def _parse_time(text: str):
@@ -47,9 +52,11 @@ async def on_sub_ask(call: CallbackQuery, callback_data: SubCallback, state: FSM
     fav_id = int(callback_data.id)
     user_id = call.from_user.id
 
-    favorites = db.get_favorite_routes(user_id)
-    fav = next((f for f in favorites if f[0] == fav_id), None)
-    timeint = fav[4] if fav else "?"
+    fav = db.get_favorite(user_id, fav_id)
+    if not fav:
+        await call.answer("Маршрут не найден", show_alert=True)
+        return
+    timeint = fav[4]
 
     existing = db.get_subscription(user_id, fav_id)
     if existing:
@@ -101,12 +108,14 @@ async def on_sub_time_input(message: Message, state: FSMContext):
     fav_id = data['sub_fav_id']
     user_id = message.from_user.id
 
-    favorites = db.get_favorite_routes(user_id)
-    fav = next((f for f in favorites if f[0] == fav_id), None)
-    timeint = fav[4] if fav else "?"
+    fav = db.get_favorite(user_id, fav_id)
+    await state.clear()
+    if not fav:
+        await message.answer("❌ Маршрут не найден.")
+        return
+    timeint = fav[4]
 
     db.add_subscription(user_id, fav_id, notify_time)
-    await state.clear()
     await message.answer(
         f"✅ Подписка оформлена! Каждый день в <b>{notify_time}</b> буду присылать расписание на ближайшие <b>{timeint} мин.</b>",
         parse_mode="HTML"

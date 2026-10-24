@@ -1,5 +1,5 @@
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InputRichMessage
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -16,6 +16,17 @@ class RouteOrder(StatesGroup):
     waiting_for_route = State()
     waiting_for_start = State()
     waiting_for_end = State()
+
+async def _get_flow_data(call: CallbackQuery, state: FSMContext, *keys):
+    """Данные шага /new. FSM живёт в памяти и теряется при перезапуске бота —
+    тогда кнопки старого сообщения сообщают об этом, а не падают с KeyError."""
+    data = await state.get_data()
+    if all(data.get(k) for k in keys):
+        return data
+    await state.clear()
+    await call.answer()
+    await call.message.edit_text("⌛ Поиск устарел (бот перезапускался). Начните заново: /new", reply_markup=None)
+    return None
 
 @router.message(Command("new"))
 async def cmd_new(message: Message, state: FSMContext):
@@ -42,8 +53,10 @@ async def back_to_route(call: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "route_back_station")
 async def back_to_station(call: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    route = data.get('route')
+    data = await _get_flow_data(call, state, 'route')
+    if data is None:
+        return
+    route = data['route']
     await call.message.edit_text("⏳ Загружаю список остановок...", reply_markup=None)
     current_dt = parser._get_current_datetime()['date']
     stations = await parser.get_stations(route=route, dt=current_dt)
@@ -79,10 +92,12 @@ async def on_route_selected(call: CallbackQuery, callback_data: TransportCallbac
 
 @router.callback_query(TransportCallback.filter(F.action == "station"))
 async def on_start_selected(call: CallbackQuery, callback_data: TransportCallback, state: FSMContext):
+    data = await _get_flow_data(call, state, 'route')
+    if data is None:
+        return
     snt = callback_data.value
     await state.update_data(snt=snt)
-    data = await state.get_data()
-	
+
     await call.message.edit_text("⏳ Загружаю конечные остановки...", reply_markup=None)
     current_dt = parser._get_current_datetime()['date']
     destinations = await parser.get_destinations(route=data['route'], dt=current_dt, stn=snt)
@@ -98,8 +113,10 @@ async def on_start_selected(call: CallbackQuery, callback_data: TransportCallbac
 @router.callback_query(TransportCallback.filter(F.action == "dest_station"))
 async def on_end_selected(call: CallbackQuery, callback_data: TransportCallback, state: FSMContext):
     dsnt = callback_data.value
-    data = await state.get_data()
-    
+    data = await _get_flow_data(call, state, 'timeint', 'route', 'snt')
+    if data is None:
+        return
+
     await call.message.edit_text("⏳ Получаю расписание...", reply_markup=None)
     
     text_result = await get_result(
@@ -112,7 +129,6 @@ async def on_end_selected(call: CallbackQuery, callback_data: TransportCallback,
     # Кнопка добавления в избранное
     markup = kb.get_after_result_kb(data['route'], data['snt'], dsnt, data['timeint'])
     
-    from aiogram.types import InputRichMessage
     await call.message.bot.edit_message_text(
         chat_id=call.message.chat.id,
         message_id=call.message.message_id,
@@ -132,7 +148,6 @@ async def on_refresh_schedule(call: CallbackQuery, callback_data: FavCallback):
     await call.answer("Обновляю...")
     text_result = await get_result(timeint=timeint, snt=snt, dsnt=dsnt, route=route)
     markup = kb.get_after_result_kb(route, snt, dsnt, timeint)
-    from aiogram.types import InputRichMessage
     await call.message.bot.edit_message_text(
         chat_id=call.message.chat.id,
         message_id=call.message.message_id,

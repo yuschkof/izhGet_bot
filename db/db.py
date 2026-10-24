@@ -1,6 +1,9 @@
 import sqlite3
 import logging
 from contextlib import contextmanager
+from datetime import datetime
+
+import pytz
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -126,22 +129,35 @@ def get_favorite_routes(user_id):
         # Теперь выбираем и custom_name
         cursor.execute('SELECT id, route, snt, dsnt, timeint, custom_name FROM favorite_route WHERE user_id = ?', (user_id,))
         return cursor.fetchall()
-    
-def rename_favorite_route(fav_id, new_name):
-    """Устанавливает пользовательское название для маршрута"""
+
+def get_favorite(user_id, fav_id):
+    """Один маршрут пользователя: (id, route, snt, dsnt, timeint, custom_name) или None, если не его/не существует"""
     with connection_db() as conn:
         cursor = conn.cursor()
-        cursor.execute('UPDATE favorite_route SET custom_name = ? WHERE id = ?', (new_name, fav_id))
+        cursor.execute(
+            'SELECT id, route, snt, dsnt, timeint, custom_name FROM favorite_route WHERE id = ? AND user_id = ?',
+            (fav_id, user_id)
+        )
+        return cursor.fetchone()
+
+def rename_favorite_route(fav_id, user_id, new_name):
+    """Устанавливает пользовательское название, только если маршрут принадлежит user_id"""
+    with connection_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute('UPDATE favorite_route SET custom_name = ? WHERE id = ? AND user_id = ?', (new_name, fav_id, user_id))
         conn.commit()
         return cursor.rowcount > 0
 
 def delete_favorite_route(fav_id, user_id):
-    """Удаляет избранное по ID, только если принадлежит user_id"""
+    """Удаляет избранное по ID вместе с подписками на него, только если принадлежит user_id"""
     with connection_db() as conn:
         cursor = conn.cursor()
         cursor.execute('DELETE FROM favorite_route WHERE id = ? AND user_id = ?', (fav_id, user_id))
+        deleted = cursor.rowcount > 0
+        if deleted:
+            cursor.execute('DELETE FROM subscriptions WHERE fav_id = ? AND user_id = ?', (fav_id, user_id))
         conn.commit()
-        return cursor.rowcount > 0
+        return deleted
 
 # --- Статистика ---
 
@@ -161,8 +177,6 @@ def update_uses_statistics(date_str):
 
 def update_unknown_messages_statistics(user_id: int):
     """Увеличивает счетчик неизвестных сообщений на сегодня."""
-    from datetime import datetime
-    import pytz
     date_str = datetime.now(pytz.timezone('Europe/Samara')).strftime("%d.%m.%Y")
     with connection_db() as conn:
         cursor = conn.cursor()

@@ -1,4 +1,4 @@
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, WebAppInfo, InlineKeyboardButton
+from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.filters.callback_data import CallbackData
 
@@ -111,6 +111,29 @@ def get_favorites_list_kb(user_routes):
 
 
 DONATE_URL = "https://t.me/tribute/app?startapp=dzqK"
+
+
+def get_donate_kb():
+    """Одна кнопка доната — под уведомлениями подписки."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="💖 Поддержать автора", url=DONATE_URL)
+    return builder.as_markup()
+
+
+def get_inline_loading_kb():
+    """Заглушка под inline-сообщением, пока грузится расписание."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Загрузка...", callback_data="ignore")
+    return builder.as_markup()
+
+
+def get_inline_result_kb(fav_id):
+    """Кнопки под расписанием, отправленным через inline-режим."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔄 Обновить", callback_data=f"inline_ref:{fav_id}")
+    builder.button(text="💖 Донат", url=DONATE_URL)
+    builder.adjust(2)
+    return builder.as_markup()
 
 
 def get_after_result_kb(route, snt, dsnt, timeint, is_favorite=False):

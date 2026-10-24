@@ -1,5 +1,7 @@
+import html
+
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InputRichMessage
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -25,7 +27,6 @@ async def cmd_favorites(message: Message):
         return
 
     markup = kb.get_favorites_list_kb(favorites)
-    from aiogram.types import InputRichMessage
     await message.bot.send_rich_message(
         chat_id=message.chat.id,
         rich_message=InputRichMessage(html="<h2>⭐ Ваши избранные маршруты:</h2>"),
@@ -37,10 +38,8 @@ async def on_favorite_click(call: CallbackQuery, callback_data: FavCallback):
     fav_id = int(callback_data.id)
     user_id = call.from_user.id
     
-    favorites = db.get_favorite_routes(user_id)
-    # Ищем маршрут (теперь кортеж из 6 элементов)
-    target_fav = next((f for f in favorites if f[0] == fav_id), None)
-    
+    target_fav = db.get_favorite(user_id, fav_id)
+
     if not target_fav:
         await call.answer("Маршрут не найден", show_alert=True)
         return
@@ -59,7 +58,6 @@ async def on_favorite_click(call: CallbackQuery, callback_data: FavCallback):
     
     sub = db.get_subscription(user_id, fav_id)
     markup = kb.get_delete_kb(fav_id, has_subscription=bool(sub))
-    from aiogram.types import InputRichMessage
     await call.message.bot.edit_message_text(
         chat_id=call.message.chat.id,
         message_id=call.message.message_id,
@@ -76,7 +74,6 @@ async def on_rename_ask(call: CallbackQuery, callback_data: FavCallback, state: 
     # Запоминаем ID маршрута, который хотим переименовать
     await state.update_data(editing_fav_id=fav_id)
     
-    from aiogram.types import InputRichMessage
     text = (
         "<h3>✍️ Переименование маршрута</h3>\n"
         "<p>Введите новое название для этого маршрута:</p>\n"
@@ -95,17 +92,24 @@ async def on_rename_ask(call: CallbackQuery, callback_data: FavCallback, state: 
 async def on_new_name_input(message: Message, state: FSMContext):
     data = await state.get_data()
     fav_id = data.get('editing_fav_id')
-    new_name = message.text
-    
+    new_name = (message.text or "").strip()
+
+    if not new_name:
+        await message.answer("⚠️ Пришлите название текстом.")
+        return
+
     # Ограничим длину имени, чтобы не ломать кнопки
     if len(new_name) > 30:
         await message.answer("⚠️ Название слишком длинное. Попробуйте короче (до 30 символов).")
         return
 
-    # Сохраняем в БД
-    db.rename_favorite_route(fav_id, new_name)
-    
-    await message.answer(f"✅ Маршрут переименован в «<b>{new_name}</b>»!", parse_mode="HTML")
+    # Сохраняем в БД (только если маршрут принадлежит пользователю)
+    if not db.rename_favorite_route(fav_id, message.from_user.id, new_name):
+        await state.clear()
+        await message.answer("❌ Маршрут не найден.")
+        return
+
+    await message.answer(f"✅ Маршрут переименован в «<b>{html.escape(new_name)}</b>»!", parse_mode="HTML")
     
     await cmd_favorites(message)
     await state.clear()
@@ -145,7 +149,6 @@ async def on_back_to_favorites(call: CallbackQuery):
 
     # Генерируем клавиатуру и плавно меняем текст и кнопки
     markup = kb.get_favorites_list_kb(favorites)
-    from aiogram.types import InputRichMessage
     await call.message.bot.edit_message_text(
         chat_id=call.message.chat.id,
         message_id=call.message.message_id,

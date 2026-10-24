@@ -21,7 +21,7 @@ python main.py
 docker-compose up -d
 ```
 
-`.env` must contain `BOT_TOKEN`.
+`.env` must contain `BOT_TOKEN`. Optional: `ADMIN_ID`, `TIMETABLE_NOTICE` (warning shown above every timetable; set to empty to hide it).
 
 ## Architecture
 
@@ -54,7 +54,7 @@ keyboards/
 
 ### Timezone
 
-The parser uses `Asia/Dubai` (UTC+4) as the local timezone for Izhevsk (Udmurtia does not observe DST).
+All local time (parser requests, subscription scheduler, statistics dates) uses `Europe/Samara` (UTC+4, same as Izhevsk; no DST).
 
 ### DB schema notes
 

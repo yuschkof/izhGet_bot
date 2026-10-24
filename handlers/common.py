@@ -1,15 +1,14 @@
-import os
+import html
 from aiogram import Router, Bot, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InputRichMessage
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup, default_state
 import db.db as db
 import keyboards.keyboards as kb
+from handlers.admin import ADMIN_ID
 
 router = Router()
-
-ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 
 class SupportState(StatesGroup):
     waiting_for_message = State()
@@ -17,7 +16,7 @@ class SupportState(StatesGroup):
 @router.message(Command("start"))
 async def cmd_start(message: Message):
     text = (
-        f"<h1>Привет, {message.from_user.first_name}! 👋</h1>"
+        f"<h1>Привет, {html.escape(message.from_user.first_name)}! 👋</h1>"
         "Я бот для просмотра расписания транспорта ИжГЭТ.<br>"
         "Помогаю быстро узнать, когда приедет твой трамвай или троллейбус.<br><br>"
         "<blockquote>⚠️ <b>Важно:</b> Я не являюсь официальным ботом ИжГЭТ. "
@@ -27,7 +26,6 @@ async def cmd_start(message: Message):
         "⭐ Жми /favorites — сохраненные маршруты<br>"
         "💖 Жми /donate — поддержать проект"
     )
-    from aiogram.types import InputRichMessage
     await message.bot.send_rich_message(
         chat_id=message.chat.id,
         rich_message=InputRichMessage(html=text)
@@ -48,7 +46,6 @@ async def cmd_help(message: Message):
         "<details><summary>▶️ <b>Как связаться с разработчиком?</b></summary>\n"
         "Используйте команду /support, чтобы написать сообщение разработчику. Вы также можете поддержать проект через /donate!\n</details>"
     )
-    from aiogram.types import InputRichMessage
     await message.bot.send_rich_message(
         chat_id=message.chat.id,
         rich_message=InputRichMessage(html=text)
@@ -59,7 +56,7 @@ async def cmd_donate(message: Message):
     await message.answer(
         "💖 <b>Поддержать проект</b>\n\n"
         "Если бот оказался вам полезен, вы можете поддержать его разработку и оплату серверов:\n"
-        "👉 <a href='https://t.me/tribute/app?startapp=dzqK'>Сделать донат через Tribute</a>\n\n"
+        f"👉 <a href='{kb.DONATE_URL}'>Сделать донат через Tribute</a>\n\n"
         "Спасибо за вашу поддержку! 🥰",
         disable_web_page_preview=True
     )
@@ -97,7 +94,6 @@ async def cmd_stat(message: Message):
             text += "\n"
             
     text += "</pre></details>"
-    from aiogram.types import InputRichMessage
     await message.bot.send_rich_message(
         chat_id=message.chat.id,
         rich_message=InputRichMessage(html=text)
@@ -117,6 +113,11 @@ async def cmd_support(message: Message, state: FSMContext):
         reply_markup=kb.get_cancel_support_kb()
     )
     await state.set_state(SupportState.waiting_for_message)
+
+@router.callback_query(F.data == "ignore")
+async def on_ignore_callback(call: CallbackQuery):
+    # Кнопки-заглушки («Загрузка...», «Остановки не найдены») — просто убираем часики
+    await call.answer()
 
 @router.callback_query(F.data == "cancel_support", SupportState.waiting_for_message)
 async def cancel_support_callback(call: CallbackQuery, state: FSMContext):

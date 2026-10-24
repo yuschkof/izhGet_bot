@@ -1,9 +1,28 @@
+import os
 import re
+import logging
 import aiohttp
 import pytz
 from datetime import datetime
 from lxml import etree
 import db.db as db
+
+logger = logging.getLogger(__name__)
+
+# Предупреждение над каждым расписанием. Задаётся в .env; пустое значение — не показывать.
+TIMETABLE_NOTICE = os.getenv(
+    "TIMETABLE_NOTICE",
+    "Внимание: на сайте ИжГЭТ ведутся тех. работы, расписание может быть неточным."
+).strip()
+
+# Сайт ИжГЭТ иногда подвисает — не держим пользователя дольше этого
+REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=15)
+
+
+def _cell_text(cell) -> str:
+    """Текст ячейки таблицы, включая вложенные теги; пустая ячейка -> ''."""
+    return ''.join(cell.itertext()).strip()
+
 
 class TimetableParser:
     def __init__(self, timezone: str = 'Europe/Samara'):
@@ -13,7 +32,7 @@ class TimetableParser:
 
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession()
+            self._session = aiohttp.ClientSession(timeout=REQUEST_TIMEOUT)
         return self._session
 
     async def close(self):
@@ -52,7 +71,8 @@ class TimetableParser:
             else:
                 lines.append("🚏 <b>Расписание</b>")
 
-            lines.append("<blockquote>⚠️ <i>Внимание: на сайте ИжГЭТ ведутся тех. работы, расписание может быть неточным.</i></blockquote>")
+            if TIMETABLE_NOTICE:
+                lines.append(f"<blockquote>⚠️ <i>{TIMETABLE_NOTICE}</i></blockquote>")
             
             # --- СПИСОК (Таблица Bot API 10.3) ---
             lines.append("<table compact bordered striped>")
@@ -66,9 +86,9 @@ class TimetableParser:
             for row in rows:
                 cells = row.findall(".//td")
                 if len(cells) == 4:
-                    route = cells[0].text.strip()
-                    departure_time = cells[2].text.strip()
-                    arrival_time = cells[3].text.strip()
+                    route = _cell_text(cells[0])
+                    departure_time = _cell_text(cells[2])
+                    arrival_time = _cell_text(cells[3])
                     
                     line = f"<tr><td align=\"center\">🚋 {route}</td><td align=\"center\">{departure_time}</td><td align=\"center\">🏁 {arrival_time}</td></tr>"
                     lines.append(line)
@@ -80,8 +100,9 @@ class TimetableParser:
             
             return '\n'.join(lines)
 
-        except Exception as e:
-            return f"🚫 Ошибка обработки данных: {e}"
+        except Exception:
+            logger.exception("Ошибка парсинга расписания")
+            return "🚫 Не удалось разобрать ответ сайта ИжГЭТ. Попробуйте позже."
 
     async def get_timetable(self, route: str, stn: str, dstn: str, timeint: str):
         current_dt = self._get_current_datetime()
@@ -107,9 +128,11 @@ class TimetableParser:
                 if response.status == 200:
                     html = await response.text()
                     return self._parse_response_table(html)
+                logger.warning("ИжГЭТ ответил статусом %s на запрос расписания", response.status)
                 return "🚫 Сайт ИжГЭТ недоступен."
         except Exception as e:
-            return f"🚫 Ошибка сети: {e}"
+            logger.warning("Ошибка сети при запросе расписания: %r", e)
+            return "🚫 Сайт ИжГЭТ не отвечает. Попробуйте позже."
 
     async def get_stations(self, route: str, dt: str) -> dict:
         """
