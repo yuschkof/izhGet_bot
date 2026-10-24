@@ -116,3 +116,20 @@ def test_confirmation_text():
         "✅ По выходным в 09:15 буду присылать расписание на ближайшие 60 мин."
     assert reminders.confirmation_text("schedule", "all", "07:30", None, "30") == \
         "✅ Каждый день в 07:30 буду присылать расписание на ближайшие 30 мин."
+
+
+def test_pick_trips_skips_malformed_times():
+    deps = [Departure("1", "", ""), Departure("1", "??", "08:30"), Departure("1", "08:07", "08:27")]
+    first, following = reminders.pick_trips(deps, "08:00")
+    assert first == Departure("1", "08:07", "08:27")
+    assert following is None
+
+
+def test_pick_trips_unsorted_input():
+    first, following = reminders.pick_trips([DEPS[3], DEPS[1], DEPS[2]], "08:00")
+    assert first == DEPS[1]
+    assert following == DEPS[2]
+
+
+def test_fire_time_exactly_target():
+    assert reminders.fire_time("08:10", 10) == "08:00"
