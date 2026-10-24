@@ -25,6 +25,7 @@ MAX_CATCH_UP = timedelta(minutes=10)
 # Общий лимит на все одновременно идущие минуты (при догоне их может быть несколько)
 _semaphore = asyncio.Semaphore(CONCURRENCY)
 # Подписки, которые планируются прямо сейчас: параллельная минута не должна повторно ходить на сайт
+# (помечает и снимает пометку process_minute)
 _planning: set[int] = set()
 
 
@@ -56,14 +57,6 @@ async def _send_schedule(bot: Bot, sub):
 
 
 async def _plan_reminder(bot: Bot, sub, now: str, today):
-    # sub_id уже помечен в _planning вызывающим (синхронно, до первого await) — здесь снимаем пометку
-    try:
-        await _plan_reminder_inner(bot, sub, now, today)
-    finally:
-        _planning.discard(sub[0])
-
-
-async def _plan_reminder_inner(bot: Bot, sub, now: str, today):
     sub_id, user_id, fav_id, notify_time, _, lead_min = sub
     fav = db.get_favorite(user_id, fav_id)
     if not fav:
@@ -125,14 +118,34 @@ async def process_minute(bot: Bot, moment: datetime, send_due: bool = True):
                    and s[0] not in _planning
                    and db.get_run(s[0], day) is None]
 
-    _planning.update(s[0] for s in remind_subs)
-    await asyncio.gather(
-        _run_limited(schedule_subs, lambda s: _send_schedule(bot, s)),
-        _run_limited(remind_subs, lambda s: _plan_reminder(bot, s, now, today)),
-    )
+    planning_ids = [s[0] for s in remind_subs]
+    _planning.update(planning_ids)
+    try:
+        await asyncio.gather(
+            _run_limited(schedule_subs, lambda s: _send_schedule(bot, s)),
+            _run_limited(remind_subs, lambda s: _plan_reminder(bot, s, now, today)),
+        )
+    finally:
+        _planning.difference_update(planning_ids)
     # После планирования: напоминание, чей момент уже наступил, уходит в ту же минуту
     if send_due:
         await _run_limited(db.get_due_runs(day, now), lambda r: _send_reminder(bot, r, now))
+
+
+def _missed_minutes(last_minute: datetime, now_minute: datetime) -> list:
+    """Минуты после last_minute до now_minute включительно, самая новая первой (не больше MAX_CATCH_UP).
+
+    Новая минута идёт первой: только она отправляет напоминания и держит подписку в _planning,
+    поэтому старая минута со своим «сейчас» не должна перехватить планирование раньше неё."""
+    if now_minute - last_minute > MAX_CATCH_UP:
+        logger.warning("Планировщик подписок отстал, пропускаю минуты до %s", now_minute - MAX_CATCH_UP)
+        last_minute = now_minute - MAX_CATCH_UP
+    minutes = []
+    minute = now_minute
+    while minute > last_minute:
+        minutes.append(minute)
+        minute -= timedelta(minutes=1)
+    return minutes
 
 
 def _log_task_error(task: asyncio.Task):
@@ -151,15 +164,12 @@ async def run(bot: Bot):
     while True:
         try:
             now_minute = datetime.now(TZ).replace(second=0, microsecond=0)
-            if now_minute - last_minute > MAX_CATCH_UP:
-                logger.warning("Планировщик подписок отстал, пропускаю минуты до %s", now_minute - MAX_CATCH_UP)
-                last_minute = now_minute - MAX_CATCH_UP
-            while last_minute < now_minute:
-                last_minute += timedelta(minutes=1)
-                task = asyncio.create_task(process_minute(bot, last_minute, send_due=(last_minute == now_minute)))
+            for minute in _missed_minutes(last_minute, now_minute):
+                task = asyncio.create_task(process_minute(bot, minute, send_due=(minute == now_minute)))
                 running.add(task)
                 task.add_done_callback(_log_task_error)
                 task.add_done_callback(running.discard)
+            last_minute = max(last_minute, now_minute)
         except Exception:
             logger.exception("Ошибка в планировщике подписок")
         await asyncio.sleep(10)

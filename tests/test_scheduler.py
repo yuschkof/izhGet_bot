@@ -25,6 +25,12 @@ def sent(calls):
     return [c for c in calls if c.method == "SendRichMessage"]
 
 
+@pytest.fixture(autouse=True)
+def fresh_scheduler_state(monkeypatch):
+    monkeypatch.setattr(scheduler, "_semaphore", asyncio.Semaphore(scheduler.CONCURRENCY))
+    scheduler._planning.clear()
+
+
 @pytest.fixture
 def site(monkeypatch):
     """Фиктивный сайт ИжГЭТ: state['result'] — что вернёт get_departures."""
@@ -204,3 +210,29 @@ async def test_send_failure_is_not_retried(remind, site, monkeypatch):
 
     await scheduler.process_minute(bot, at(7, 58))
     assert sent(calls) == []
+
+
+async def test_catch_up_site_down_still_reports(tmp_db, monkeypatch):
+    async def get_departures(*args):
+        await asyncio.sleep(0)
+        return None
+
+    monkeypatch.setattr(scheduler.parser, "get_departures", get_departures)
+    fav_id = db.add_favorite_route(5, "1", "1900", "900", "30", "Дом")
+    sub_id = db.add_subscription(5, fav_id, "08:30", mode="remind", days="weekdays", lead_min=5)
+    bot, calls = make_bot()
+    await asyncio.gather(scheduler.process_minute(bot, at(8, 29)),
+                         scheduler.process_minute(bot, at(8, 20), send_due=False))
+    assert [c.text for c in sent(calls)] == ["🚫 «Дом»: не удалось получить расписание с сайта ИжГЭТ."]
+    assert db.get_run(sub_id, today_iso())[1] == "skipped"
+
+
+def test_missed_minutes_newest_first():
+    assert scheduler._missed_minutes(at(8, 0), at(8, 3)) == [at(8, 3), at(8, 2), at(8, 1)]
+    assert scheduler._missed_minutes(at(8, 3), at(8, 3)) == []
+
+
+def test_missed_minutes_limited_by_max_catch_up():
+    minutes = scheduler._missed_minutes(at(7, 0), at(8, 0))
+    assert len(minutes) == 10
+    assert minutes[0] == at(8, 0) and minutes[-1] == at(7, 51)
