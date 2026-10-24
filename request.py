@@ -6,6 +6,7 @@ import pytz
 from datetime import datetime
 from lxml import etree
 import db.db as db
+from reminders import Departure
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,35 @@ REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=15)
 def _cell_text(cell) -> str:
     """Текст ячейки таблицы, включая вложенные теги; пустая ячейка -> ''."""
     return ''.join(cell.itertext()).strip()
+
+
+NO_TRIPS_XPATH = ".//font[@color='RED'][@size='3']"
+
+
+def _departures_from_root(root):
+    """Рейсы из таблицы ответа. None — таблицы нет (неизвестный формат)."""
+    table = root.find(".//table")
+    if table is None or len(table) == 0:
+        return None
+    departures = []
+    for row in table.findall(".//tr")[1:]:
+        cells = row.findall(".//td")
+        if len(cells) == 4:
+            departures.append(Departure(_cell_text(cells[0]), _cell_text(cells[2]), _cell_text(cells[3])))
+    return departures
+
+
+def parse_departures(response_text: str):
+    """Рейсы из ответа load_station.php: [] — «рейсов нет», None — ответ не разобран."""
+    try:
+        root = etree.fromstring(response_text, etree.HTMLParser())
+    except Exception:
+        return None
+    if root is None:
+        return None
+    if root.find(NO_TRIPS_XPATH) is not None:
+        return []
+    return _departures_from_root(root)
 
 
 class TimetableParser:
@@ -49,18 +79,17 @@ class TimetableParser:
 
     def _parse_response_table(self, response_text: str):
         try:
-            html_parser = etree.HTMLParser()
-            root = etree.fromstring(response_text, html_parser)
-            
+            root = etree.fromstring(response_text, etree.HTMLParser())
+
             # 1. Проверка на сообщение "Нет рейсов"
-            font_tag = root.find(".//font[@color='RED'][@size='3']")
+            font_tag = root.find(NO_TRIPS_XPATH)
             if font_tag is not None:
                  return f"😕 <b>Нет рейсов:</b> {font_tag.text}"
 
-            table = root.find(".//table")
-            if table is None or len(table) == 0:
+            departures = _departures_from_root(root)
+            if departures is None:
                 return "⚠️ Нет данных или ошибка парсинга."
-            
+
             lines = []
             
             # --- ШАПКА (Обычный текст) ---
@@ -78,20 +107,12 @@ class TimetableParser:
             lines.append("<table compact bordered striped>")
             lines.append("<tr><th>Маршрут</th><th>Отправление</th><th>Прибытие</th></tr>")
 
-            rows = table.findall(".//tr")[1:] 
-            
-            if not rows:
+            if not departures:
                 lines.append("<tr><td colspan=\"3\" align=\"center\">Рейсов не найдено</td></tr>")
 
-            for row in rows:
-                cells = row.findall(".//td")
-                if len(cells) == 4:
-                    route = _cell_text(cells[0])
-                    departure_time = _cell_text(cells[2])
-                    arrival_time = _cell_text(cells[3])
-                    
-                    line = f"<tr><td align=\"center\">🚋 {route}</td><td align=\"center\">{departure_time}</td><td align=\"center\">🏁 {arrival_time}</td></tr>"
-                    lines.append(line)
+            for d in departures:
+                lines.append(f"<tr><td align=\"center\">🚋 {d.route}</td><td align=\"center\">{d.departure}</td>"
+                             f"<td align=\"center\">🏁 {d.arrival}</td></tr>")
 
             lines.append("</table>")
             # --- ПОДВАЛ (Обычный текст) ---
@@ -133,6 +154,32 @@ class TimetableParser:
         except Exception as e:
             logger.warning("Ошибка сети при запросе расписания: %r", e)
             return "🚫 Сайт ИжГЭТ не отвечает. Попробуйте позже."
+
+    async def get_departures(self, route: str, stn: str, dstn: str, dt: str, start: str, timeint: int):
+        """Рейсы на дату dt (ДД.ММ.ГГГГ) от времени start (ЧЧ:ММ) на timeint минут вперёд.
+
+        [] — рейсов нет, None — сайт недоступен или ответ не разобран.
+        """
+        hours, minutes = start.split(":")
+        data = {
+            'route': route,
+            'stn': stn,
+            'dstn': dstn,
+            'dt': dt,
+            'th_rasp': hours,
+            'tm_rasp': minutes,
+            'timeint': str(timeint),
+        }
+        session = await self._get_session()
+        try:
+            async with session.post(self._url, data=data, ssl=False) as response:
+                if response.status != 200:
+                    logger.warning("ИжГЭТ ответил статусом %s на запрос рейсов", response.status)
+                    return None
+                return parse_departures(await response.text())
+        except Exception as e:
+            logger.warning("Ошибка сети при запросе рейсов: %r", e)
+            return None
 
     async def get_stations(self, route: str, dt: str) -> dict:
         """
