@@ -32,6 +32,7 @@ def site(monkeypatch):
 
     async def get_departures(route, stn, dstn, dt, start, timeint):
         state["calls"] += 1
+        await asyncio.sleep(0)
         assert (dt, start, timeint) == ("26.10.2026", "08:00", 60)
         return state["result"]
 
@@ -157,3 +158,49 @@ async def test_schedule_mode_respects_days(tmp_db, monkeypatch):
     assert sent(calls) == []
     await scheduler.process_minute(bot, at(7, 30, day=SATURDAY))
     assert sent(calls)[0].text == "🔔 <b>Дом</b><br><br><b>TT</b>"
+
+
+async def test_catch_up_old_minute_does_not_send(remind, site):
+    _, sub_id = remind
+    bot, calls = make_bot()
+    await scheduler.process_minute(bot, at(7, 0))
+    await scheduler.process_minute(bot, at(8, 5), send_due=False)
+    assert sent(calls) == []
+    assert db.get_run(sub_id, today_iso())[1] == "planned"
+
+    await scheduler.process_minute(bot, at(8, 12))
+    assert sent(calls) == []
+    assert db.get_run(sub_id, today_iso())[1] == "skipped"
+
+
+async def test_overlapping_minutes_fetch_site_once(remind, site):
+    bot, _ = make_bot()
+    await asyncio.gather(scheduler.process_minute(bot, at(7, 0)), scheduler.process_minute(bot, at(7, 1)))
+    assert site["calls"] == 1
+
+
+async def test_plan_and_send_in_same_minute(remind, site):
+    _, sub_id = remind
+    bot, calls = make_bot()
+    await scheduler.process_minute(bot, at(7, 58))
+    msgs = sent(calls)
+    assert len(msgs) == 1
+    assert "<b>08:07</b> — через 9 мин." in msgs[0].text
+    assert db.get_run(sub_id, today_iso())[1] == "sent"
+
+
+async def test_send_failure_is_not_retried(remind, site, monkeypatch):
+    _, sub_id = remind
+    bot, calls = make_bot()
+    await scheduler.process_minute(bot, at(7, 0))
+
+    async def failing_send(*args, **kwargs):
+        raise RuntimeError("telegram down")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(scheduler, "_send", failing_send)
+        await scheduler.process_minute(bot, at(7, 57))
+    assert db.get_run(sub_id, today_iso())[1] == "sent"
+
+    await scheduler.process_minute(bot, at(7, 58))
+    assert sent(calls) == []

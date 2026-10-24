@@ -22,12 +22,16 @@ CONCURRENCY = 5
 MAX_CATCH_UP = timedelta(minutes=10)
 
 
+# Общий лимит на все одновременно идущие минуты (при догоне их может быть несколько)
+_semaphore = asyncio.Semaphore(CONCURRENCY)
+# Подписки, которые планируются прямо сейчас: параллельная минута не должна повторно ходить на сайт
+_planning: set[int] = set()
+
+
 async def _run_limited(items, worker):
     """worker(item) для каждого элемента, не больше CONCURRENCY одновременно; ошибки — в лог."""
-    semaphore = asyncio.Semaphore(CONCURRENCY)
-
     async def one(item):
-        async with semaphore:
+        async with _semaphore:
             try:
                 await worker(item)
             except Exception:
@@ -52,13 +56,20 @@ async def _send_schedule(bot: Bot, sub):
 
 
 async def _plan_reminder(bot: Bot, sub, now: str, today):
+    # sub_id уже помечен в _planning вызывающим (синхронно, до первого await) — здесь снимаем пометку
+    try:
+        await _plan_reminder_inner(bot, sub, now, today)
+    finally:
+        _planning.discard(sub[0])
+
+
+async def _plan_reminder_inner(bot: Bot, sub, now: str, today):
     sub_id, user_id, fav_id, notify_time, _, lead_min = sub
     fav = db.get_favorite(user_id, fav_id)
     if not fav:
         return
     _, route, snt, dsnt, _, custom_name = fav
     day = today.isoformat()
-
     departures = await parser.get_departures(route, snt, dsnt, today.strftime('%d.%m.%Y'),
                                              notify_time, reminders.PLAN_WINDOW_MIN)
     if departures is None:
@@ -96,8 +107,11 @@ async def _send_reminder(bot: Bot, run, now: str):
     await _send(bot, user_id, text, kb.get_reminder_kb(fav_id))
 
 
-async def process_minute(bot: Bot, moment: datetime):
-    """Всё, что нужно сделать в минуту moment (aware datetime в TZ)."""
+async def process_minute(bot: Bot, moment: datetime, send_due: bool = True):
+    """Всё, что нужно сделать в минуту moment (aware datetime в TZ).
+
+    send_due=False — для догоняемых минут: напоминания отправляет только проход текущей минуты,
+    иначе устаревшее «сейчас» дало бы неверное «через N мин»."""
     now = moment.strftime('%H:%M')
     today = moment.date()
     day = today.isoformat()
@@ -108,14 +122,22 @@ async def process_minute(bot: Bot, moment: datetime):
     remind_subs = [s for s in db.get_remind_subscriptions()
                    if reminders.day_matches(s[4], today)
                    and reminders.should_plan(now, s[3])
+                   and s[0] not in _planning
                    and db.get_run(s[0], day) is None]
 
+    _planning.update(s[0] for s in remind_subs)
     await asyncio.gather(
         _run_limited(schedule_subs, lambda s: _send_schedule(bot, s)),
         _run_limited(remind_subs, lambda s: _plan_reminder(bot, s, now, today)),
     )
     # После планирования: напоминание, чей момент уже наступил, уходит в ту же минуту
-    await _run_limited(db.get_due_runs(day, now), lambda r: _send_reminder(bot, r, now))
+    if send_due:
+        await _run_limited(db.get_due_runs(day, now), lambda r: _send_reminder(bot, r, now))
+
+
+def _log_task_error(task: asyncio.Task):
+    if not task.cancelled() and task.exception():
+        logger.error("Ошибка обработки минуты", exc_info=task.exception())
 
 
 async def run(bot: Bot):
@@ -134,8 +156,9 @@ async def run(bot: Bot):
                 last_minute = now_minute - MAX_CATCH_UP
             while last_minute < now_minute:
                 last_minute += timedelta(minutes=1)
-                task = asyncio.create_task(process_minute(bot, last_minute))
+                task = asyncio.create_task(process_minute(bot, last_minute, send_due=(last_minute == now_minute)))
                 running.add(task)
+                task.add_done_callback(_log_task_error)
                 task.add_done_callback(running.discard)
         except Exception:
             logger.exception("Ошибка в планировщике подписок")
