@@ -30,12 +30,16 @@ class FakeSession(BaseSession):
             getattr(method, "reply_markup", None),
         ))
         returning = method.__returning__
-        if hasattr(returning, "model_validate"):
-            return returning.model_validate({
+        if returning is Message:
+            return Message.model_validate({
                 "message_id": 1,
                 "date": datetime.datetime.now(),
-                "chat": {"id": 1, "type": "private"},
+                "chat": {"id": getattr(method, "chat_id", None) or 1, "type": "private"},
+                "text": getattr(method, "text", None),
             })
+        if hasattr(returning, "model_validate"):
+            raise NotImplementedError(
+                f"FakeSession: no fake response for {type(method).__name__}")
         return True
 
     async def close(self):
