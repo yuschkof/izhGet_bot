@@ -106,27 +106,37 @@ async def on_sub_ask(call: CallbackQuery, callback_data: SubCallback, state: FSM
             parse_mode="HTML",
             reply_markup=kb.get_sub_manage_kb(sub_id, fav_id)
         )
+        await call.answer()
         return
 
     await _start_setup(call, state, fav_id)
+    await call.answer()
 
 
 @router.callback_query(SubCallback.filter(F.action == "edit"))
 async def on_sub_edit(call: CallbackQuery, callback_data: SubCallback, state: FSMContext):
     await _start_setup(call, state, int(callback_data.id))
+    await call.answer()
 
 
 @router.callback_query(SubCallback.filter(F.action == "mode"))
 async def on_sub_mode(call: CallbackQuery, callback_data: SubCallback, state: FSMContext):
+    if callback_data.id not in (reminders.MODE_SCHEDULE, reminders.MODE_REMIND):
+        await call.answer()
+        return
     data = await _get_setup(call, state, 'sub_fav_id')
     if data is None:
         return
     await state.update_data(sub_mode=callback_data.id)
     await call.message.edit_text(DAYS_TEXT, reply_markup=kb.get_sub_days_kb(data['sub_fav_id']))
+    await call.answer()
 
 
 @router.callback_query(SubCallback.filter(F.action == "days"))
 async def on_sub_days(call: CallbackQuery, callback_data: SubCallback, state: FSMContext):
+    if callback_data.id not in reminders.DAYS_LABELS:
+        await call.answer()
+        return
     data = await _get_setup(call, state, 'sub_fav_id', 'sub_mode')
     if data is None:
         return
@@ -135,15 +145,20 @@ async def on_sub_days(call: CallbackQuery, callback_data: SubCallback, state: FS
         await call.message.edit_text(LEAD_TEXT, reply_markup=kb.get_sub_lead_kb(data['sub_fav_id']))
     else:
         await _ask_time(call, state, data['sub_mode'], data['sub_fav_id'])
+    await call.answer()
 
 
 @router.callback_query(SubCallback.filter(F.action == "lead"))
 async def on_sub_lead(call: CallbackQuery, callback_data: SubCallback, state: FSMContext):
+    if callback_data.id not in {str(m) for m in reminders.LEAD_CHOICES}:
+        await call.answer()
+        return
     data = await _get_setup(call, state, 'sub_fav_id', 'sub_mode', 'sub_days')
     if data is None:
         return
     await state.update_data(sub_lead=int(callback_data.id))
     await _ask_time(call, state, data['sub_mode'], data['sub_fav_id'])
+    await call.answer()
 
 
 @router.message(SubEdit.waiting_for_time)
@@ -171,8 +186,8 @@ async def on_sub_time_input(message: Message, state: FSMContext):
         return
     _, route, snt, dsnt, timeint, _ = fav
 
-    db.add_subscription(user_id, fav_id, notify_time, mode=mode, days=days, lead_min=lead_min)
     text = reminders.confirmation_text(mode, days, notify_time, lead_min, timeint)
+    db.add_subscription(user_id, fav_id, notify_time, mode=mode, days=days, lead_min=lead_min)
 
     if mode == reminders.MODE_REMIND:
         # Ловим опечатки вроде 3:00 вместо 8:00, пока пользователь ещё здесь
@@ -186,16 +201,26 @@ async def on_sub_time_input(message: Message, state: FSMContext):
 
 @router.callback_query(SubCallback.filter(F.action == "del"))
 async def on_sub_delete(call: CallbackQuery, callback_data: SubCallback):
-    sub_id, fav_id = map(int, callback_data.id.split("_"))
+    try:
+        sub_id, fav_id = map(int, callback_data.id.split("_"))
+    except ValueError:
+        await call.answer()
+        return
     user_id = call.from_user.id
-    db.delete_subscription(sub_id, user_id)
-    await call.answer("🔕 Подписка отменена")
+    if db.delete_subscription(sub_id, user_id):
+        await call.answer("🔕 Подписка отменена")
+    else:
+        await call.answer("Подписка не найдена", show_alert=True)
     await _show_favorite(call, user_id, fav_id)
 
 
 @router.callback_query(F.data.startswith("sub_back_"))
 async def on_sub_back(call: CallbackQuery, state: FSMContext):
     await state.clear()
-    fav_id = int(call.data.split("_")[-1])
+    try:
+        fav_id = int(call.data.split("_")[-1])
+    except ValueError:
+        await call.answer()
+        return
     user_id = call.from_user.id
     await _show_favorite(call, user_id, fav_id)

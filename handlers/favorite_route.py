@@ -18,7 +18,8 @@ class FavEdit(StatesGroup):
     waiting_for_new_name = State()
 
 @router.message(Command("favorites"))
-async def cmd_favorites(message: Message):
+async def cmd_favorites(message: Message, state: FSMContext):
+    await state.clear()
     user_id = message.from_user.id
     favorites = db.get_favorite_routes(user_id)
     
@@ -110,7 +111,7 @@ async def on_new_name_input(message: Message, state: FSMContext):
 
     await message.answer(f"✅ Маршрут переименован в «<b>{html.escape(new_name)}</b>»!", parse_mode="HTML")
     
-    await cmd_favorites(message)
+    await cmd_favorites(message, state)
     await state.clear()
 
 

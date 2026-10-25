@@ -141,3 +141,44 @@ async def test_bad_time_keeps_waiting(dp, tmp_db, site):
     assert "Неверный формат" in calls[-1].text
     await dp.feed_update(bot, text_update(user, "7:05"))
     assert db.get_subscription(user, fav_id)[3] == "07:05"
+
+
+async def test_forged_values_are_ignored(dp, tmp_db, site):
+    user = 109
+    fav_id = db.add_favorite_route(user, "1", "1900", "900", "30", "Дом")
+    bot, calls = make_bot()
+    for data in (cb("ask", fav_id), cb("mode", "x"), cb("mode", "remind"), cb("days", "foo"),
+                 cb("days", "all"), cb("lead", 999), cb("lead", "abc"), cb("lead", 10)):
+        await dp.feed_update(bot, callback_update(user, data))
+    await dp.feed_update(bot, text_update(user, "8:00"))
+    assert calls[-1].method == "SendMessage"
+    assert calls[-1].text.startswith("✅")
+    assert db.get_subscription(user, fav_id)[3:] == ("08:00", 1, "remind", "all", 10)
+
+
+async def test_delete_someone_elses_subscription(dp, tmp_db, site):
+    fav_id = db.add_favorite_route(110, "1", "1900", "900", "30", "Дом")
+    db.add_subscription(110, fav_id, "08:00", mode="schedule", days="all", lead_min=None)
+    sub_id = db.get_subscription(110, fav_id)[0]
+    bot, calls = make_bot()
+    await dp.feed_update(bot, callback_update(111, cb("del", f"{sub_id}_{fav_id}")))
+    assert db.get_subscription(110, fav_id) is not None
+    assert any(c.method == "AnswerCallbackQuery" for c in calls)
+
+
+async def test_bad_ids_in_delete_and_back_are_ignored(dp, tmp_db, site):
+    bot, calls = make_bot()
+    await dp.feed_update(bot, callback_update(112, cb("del", "abc")))
+    await dp.feed_update(bot, callback_update(112, "sub_back_abc"))
+    assert [c.method for c in calls] == ["AnswerCallbackQuery", "AnswerCallbackQuery"]
+
+
+async def test_site_down_no_warning(dp, tmp_db, site):
+    user = 113
+    site["result"] = None
+    fav_id = db.add_favorite_route(user, "1", "1900", "900", "30", "Дом")
+    bot, calls = make_bot()
+    for data in (cb("ask", fav_id), cb("mode", "remind"), cb("days", "all"), cb("lead", 5)):
+        await dp.feed_update(bot, callback_update(user, data))
+    await dp.feed_update(bot, text_update(user, "8:00"))
+    assert "⚠️" not in calls[-1].text
