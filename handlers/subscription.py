@@ -223,4 +223,5 @@ async def on_sub_back(call: CallbackQuery, state: FSMContext):
         await call.answer()
         return
     user_id = call.from_user.id
+    await call.answer()
     await _show_favorite(call, user_id, fav_id)
