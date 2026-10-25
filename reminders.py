@@ -71,11 +71,15 @@ def fire_time(at: str, lead_min: int) -> str:
     return from_minutes(to_minutes(at) - lead_min)
 
 
-def run_action(now: str, fire_at: str, dep_time: str | None) -> str:
-    """'wait' — ещё рано, 'send' — отправлять, 'skip' — рейс уже ушёл (бот лежал)."""
+def run_action(now: str, fire_at: str, dep_time: str | None, target: str | None = None) -> str:
+    """'wait' — ещё рано, 'send' — отправлять, 'skip' — рейс уже ушёл (бот лежал).
+
+    Без рейсов (dep_time=None) «рейсов нет» теряет смысл, когда время цели уже прошло."""
     if to_minutes(now) < to_minutes(fire_at):
         return "wait"
     if dep_time and to_minutes(now) >= to_minutes(dep_time):
+        return "skip"
+    if not dep_time and target and to_minutes(now) >= to_minutes(target):
         return "skip"
     return "send"
 

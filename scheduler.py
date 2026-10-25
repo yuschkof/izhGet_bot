@@ -84,7 +84,7 @@ async def _plan_reminder(bot: Bot, sub, now: str, today):
 
 async def _send_reminder(bot: Bot, run, now: str):
     run_id, user_id, fire_at, dep_time, route, next_dep, fav_id, notify_time = run
-    action = reminders.run_action(now, fire_at, dep_time)
+    action = reminders.run_action(now, fire_at, dep_time, target=notify_time)
     if action == 'wait':
         return
     # Захват до отправки: параллельный проход (догон минут) не отправит второй раз,
@@ -118,6 +118,10 @@ async def process_minute(bot: Bot, moment: datetime, send_due: bool = True):
                    and s[0] not in _planning
                    and db.get_run(s[0], day) is None]
 
+    # Уже наступившие напоминания уходят сразу, не дожидаясь (возможно медленного) планирования
+    if send_due:
+        await _run_limited(db.get_due_runs(day, now), lambda r: _send_reminder(bot, r, now))
+
     planning_ids = [s[0] for s in remind_subs]
     _planning.update(planning_ids)
     try:
@@ -127,7 +131,8 @@ async def process_minute(bot: Bot, moment: datetime, send_due: bool = True):
         )
     finally:
         _planning.difference_update(planning_ids)
-    # После планирования: напоминание, чей момент уже наступил, уходит в ту же минуту
+    # После планирования: напоминание, чей момент наступил только сейчас, уходит в ту же минуту
+    # (повторная отправка исключена: claim_run)
     if send_due:
         await _run_limited(db.get_due_runs(day, now), lambda r: _send_reminder(bot, r, now))
 

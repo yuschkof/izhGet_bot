@@ -75,8 +75,9 @@ def create_tables():
         for ddl in ("mode TEXT DEFAULT 'schedule'", "days TEXT DEFAULT 'all'", "lead_min INTEGER"):
             try:
                 cursor.execute(f'ALTER TABLE subscriptions ADD COLUMN {ddl}')
-            except Exception:
-                pass
+            except sqlite3.OperationalError as e:
+                if 'duplicate column' not in str(e).lower():
+                    raise
 
         # Запланированные напоминания «когда выходить» — по одному на подписку в день
         cursor.execute('''

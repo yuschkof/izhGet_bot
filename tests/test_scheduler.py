@@ -115,6 +115,46 @@ async def test_no_trips_message(remind, site):
     assert sent(calls)[0].text == "😕 «Дом»: сегодня после 08:00 в течение часа рейсов нет."
 
 
+async def test_stale_no_trips_is_skipped_after_downtime(remind, site):
+    _, sub_id = remind
+    site["result"] = []
+    bot, calls = make_bot()
+    await scheduler.process_minute(bot, at(7, 0))
+    await scheduler.process_minute(bot, at(12, 0))
+    assert sent(calls) == []
+    assert db.get_run(sub_id, today_iso())[1] == "skipped"
+
+
+async def test_due_reminder_not_delayed_by_slow_planning(remind, monkeypatch):
+    fav_b = db.add_favorite_route(5, "2", "1900", "900", "30", "Работа")
+    db.add_subscription(5, fav_b, "08:30", mode="remind", days="weekdays", lead_min=10)
+    gate = asyncio.Event()
+    blocked = {"b": False}
+
+    async def get_departures(route, stn, dstn, dt, start, timeint):
+        if start == "08:30":
+            blocked["b"] = True
+            await gate.wait()
+            return []
+        await asyncio.sleep(0)
+        return DEPS
+
+    monkeypatch.setattr(scheduler.parser, "get_departures", get_departures)
+    bot, calls = make_bot()
+    await scheduler.process_minute(bot, at(7, 0))
+
+    task = asyncio.create_task(scheduler.process_minute(bot, at(7, 57)))
+    for _ in range(10):
+        await asyncio.sleep(0)
+    assert blocked["b"] and not task.done()
+    assert len(sent(calls)) == 1
+    assert "Пора выходить! «Дом»" in sent(calls)[0].text
+
+    gate.set()
+    await task
+    assert len(sent(calls)) == 1
+
+
 async def test_site_down_retries_then_reports_once(remind, site):
     _, sub_id = remind
     site["result"] = None

@@ -74,6 +74,11 @@ def test_run_action(now, dep, expected):
     assert reminders.run_action(now, "07:57", dep) == expected
 
 
+def test_run_action_no_trips_skipped_once_target_passed():
+    assert reminders.run_action("07:30", "07:20", None, target="07:30") == "skip"
+    assert reminders.run_action("07:25", "07:20", None, target="07:30") == "send"
+
+
 def test_route_name():
     assert reminders.route_name("Дом", "1") == "Дом"
     assert reminders.route_name(None, "1") == "Маршрут 1"
