@@ -53,14 +53,14 @@ def should_plan(now: str, target: str) -> bool:
 _TIME_RE = re.compile(r"^\d{1,2}:\d{2}$")
 
 
-def _is_time(value) -> bool:
+def is_time(value) -> bool:
     return bool(value) and bool(_TIME_RE.match(value))
 
 
 def pick_trips(departures, target: str):
     """Первый рейс с отправлением не раньше цели и следующий за ним (любой может быть None)."""
     later = sorted((d for d in departures
-                   if _is_time(d.departure) and to_minutes(d.departure) >= to_minutes(target)),
+                   if is_time(d.departure) and to_minutes(d.departure) >= to_minutes(target)),
                    key=lambda d: to_minutes(d.departure))
     first = later[0] if later else None
     following = later[1] if len(later) > 1 else None
