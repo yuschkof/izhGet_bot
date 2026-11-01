@@ -45,6 +45,12 @@ def create_tables():
             timeint TEXT,
             custom_name TEXT
         )''')
+        # Закрепление внизу чата (для существующих БД): NULL — не закреплён, иначе порядок кнопки
+        try:
+            cursor.execute('ALTER TABLE favorite_route ADD COLUMN pin_order INTEGER')
+        except sqlite3.OperationalError as e:
+            if 'duplicate column' not in str(e).lower():
+                raise
 
         # Таблица статистики
         cursor.execute('''
@@ -185,6 +191,46 @@ def delete_favorite_route(fav_id, user_id):
             cursor.execute('DELETE FROM subscriptions WHERE fav_id = ? AND user_id = ?', (fav_id, user_id))
         conn.commit()
         return deleted
+
+def get_pinned_favorites(user_id):
+    """Закреплённые внизу маршруты пользователя по порядку: [(id, route, custom_name), ...]"""
+    with connection_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            'SELECT id, route, custom_name FROM favorite_route '
+            'WHERE user_id = ? AND pin_order IS NOT NULL ORDER BY pin_order',
+            (user_id,)
+        )
+        return cursor.fetchall()
+
+def is_pinned(user_id, fav_id) -> bool:
+    with connection_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            'SELECT 1 FROM favorite_route WHERE id = ? AND user_id = ? AND pin_order IS NOT NULL',
+            (fav_id, user_id)
+        )
+        return cursor.fetchone() is not None
+
+def set_pinned(user_id, fav_id, pinned: bool) -> bool:
+    """Закрепляет (в конец ряда) или открепляет маршрут пользователя. False — нечего менять."""
+    with connection_db() as conn:
+        cursor = conn.cursor()
+        if pinned:
+            cursor.execute(
+                'UPDATE favorite_route SET pin_order = '
+                '(SELECT COALESCE(MAX(pin_order), 0) + 1 FROM favorite_route WHERE user_id = ?) '
+                'WHERE id = ? AND user_id = ? AND pin_order IS NULL',
+                (user_id, fav_id, user_id)
+            )
+        else:
+            cursor.execute(
+                'UPDATE favorite_route SET pin_order = NULL '
+                'WHERE id = ? AND user_id = ? AND pin_order IS NOT NULL',
+                (fav_id, user_id)
+            )
+        conn.commit()
+        return cursor.rowcount > 0
 
 # --- Статистика ---
 

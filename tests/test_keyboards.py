@@ -40,3 +40,20 @@ def test_reminder_kb():
     markup = kb.get_reminder_kb(7)
     assert button_texts(markup) == ["📋 Полное расписание", "💖 Поддержать автора"]
     assert _callbacks(markup)[0] == FavCallback(action="select", id="7").pack()
+
+
+def test_delete_kb_pin_button():
+    assert "📌 Закрепить внизу" in button_texts(kb.get_delete_kb(7))
+    markup = kb.get_delete_kb(7, pinned=True)
+    assert "📍 Открепить" in button_texts(markup)
+    assert FavCallback(action="unpin", id="7").pack() in _callbacks(markup)
+    assert FavCallback(action="pin", id="7").pack() in _callbacks(kb.get_delete_kb(7))
+
+
+def test_pinned_kb_two_per_row_and_persistent():
+    from aiogram.types import ReplyKeyboardMarkup, ReplyKeyboardRemove
+    markup = kb.get_pinned_kb([(1, "1", "Дом"), (2, "2", None), (3, "3", "Работа")])
+    assert isinstance(markup, ReplyKeyboardMarkup)
+    assert [[b.text for b in row] for row in markup.keyboard] == [["Дом", "Маршрут 2"], ["Работа"]]
+    assert markup.is_persistent and markup.resize_keyboard
+    assert isinstance(kb.get_pinned_kb([]), ReplyKeyboardRemove)

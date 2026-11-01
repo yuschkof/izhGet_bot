@@ -1,5 +1,5 @@
-from aiogram.types import InlineKeyboardButton
-from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.types import InlineKeyboardButton, ReplyKeyboardRemove
+from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 from aiogram.filters.callback_data import CallbackData
 
 import reminders
@@ -158,17 +158,37 @@ def get_after_result_kb(route, snt, dsnt, timeint, is_favorite=False):
     return builder.as_markup()
 
 
-def get_delete_kb(fav_id, sub=None):
+def get_delete_kb(fav_id, sub=None, pinned=False):
     """sub — строка из db.get_subscription (или None, если подписки нет)."""
     builder = InlineKeyboardBuilder()
     builder.button(text="✏️ Переименовать", callback_data=FavCallback(action='rename_ask', id=str(fav_id)))
     builder.button(text="❌ Удалить", callback_data=FavCallback(action='del', id=str(fav_id)))
     sub_text = reminders.sub_button_text(sub[5], sub[3]) if sub else "🔔 Подписаться"
     builder.button(text=sub_text, callback_data=SubCallback(action='ask', id=str(fav_id)))
+    if pinned:
+        builder.button(text="📍 Открепить", callback_data=FavCallback(action='unpin', id=str(fav_id)))
+    else:
+        builder.button(text="📌 Закрепить внизу", callback_data=FavCallback(action='pin', id=str(fav_id)))
     builder.button(text="💖 Поддержать автора", url=DONATE_URL)
     builder.button(text="🔙 Назад к списку", callback_data="back_to_favorites")
-    builder.adjust(2, 1, 1, 1)
+    builder.adjust(2, 1, 1, 1, 1)
     return builder.as_markup()
+
+
+def pinned_button_text(route, custom_name):
+    """Текст кнопки закреплённого маршрута — по нему же бот узнаёт нажатие."""
+    return reminders.route_name(custom_name, route)
+
+
+def get_pinned_kb(pinned):
+    """Постоянная клавиатура внизу чата из db.get_pinned_favorites; пусто — убрать клавиатуру."""
+    if not pinned:
+        return ReplyKeyboardRemove()
+    builder = ReplyKeyboardBuilder()
+    for _, route, custom_name in pinned:
+        builder.button(text=pinned_button_text(route, custom_name))
+    builder.adjust(2)
+    return builder.as_markup(resize_keyboard=True, is_persistent=True)
 
 
 def get_sub_manage_kb(sub_id, fav_id):

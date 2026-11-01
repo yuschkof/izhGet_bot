@@ -55,7 +55,7 @@ keyboards/
 1. User runs `/new` → FSM (`RouteOrder`) walks through 4 states collecting `timeint`, `route`, `snt`, `dsnt`
 2. `TimetableParser.get_timetable()` POSTs to `ижгэт.рф/rasp/load_station.php` and parses HTML table with lxml
 3. Result is displayed as HTML-formatted message; user can save it as a favorite
-4. Favorites are stored in SQLite with a `custom_name` field; inline mode (`@bot`) searches them
+4. Favorites are stored in SQLite with a `custom_name` field; inline mode (`@bot`) searches them. Up to 4 favorites can be pinned (`favorite_route.pin_order`) to a persistent reply keyboard; a press sends the button text (= route name, unique among pinned, never starting with `/`), caught by `favorite_route.pinned_router`, which `main.py` registers before `common` so the unknown-text stub doesn't swallow it
 5. Subscriptions have `mode` (`schedule` — timetable at HH:MM; `remind` — message N minutes before the first trip not earlier than HH:MM) and `days` (`all`/`weekdays`/`weekends`). `remind` subs are planned 60 min before the target into `reminder_runs` (one row per sub per day), then sent by `scheduler.process_minute`. The scheduler sends only on the current minute (catch-up minutes only plan), processes missed minutes newest first, and uses `db.claim_run` so a reminder is sent at most once. Changing a subscription deletes all its `reminder_runs`, so it is re-planned (even the same day).
 
 ### Callback data factories
@@ -70,7 +70,7 @@ All local time (parser requests, subscription scheduler, statistics dates) uses 
 
 ### DB schema notes
 
-`favorite_route` columns: `id, user_id, route, snt, dsnt, timeint, custom_name` (originally had `snt_name, dsnt_name` — see `migrate_all.py` for migration history).
+`favorite_route` columns: `id, user_id, route, snt, dsnt, timeint, custom_name, pin_order` (`pin_order` NULL = not pinned; originally had `snt_name, dsnt_name` — see `migrate_all.py` for migration history).
 
 `statistics.day` is stored as `DD.MM.YYYY`; sorting requires string manipulation (see `get_statistics()`).
 

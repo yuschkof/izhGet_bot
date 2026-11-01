@@ -40,8 +40,10 @@ async def main():
     dp.update.outer_middleware(UserRegisterMiddleware())
 
     # 4. Подключение роутеров
-    # admin — первым: иначе текстовый реплай админа перехватит заглушка из common
+    # admin и кнопки внизу — раньше common: иначе текстовый реплай админа и нажатие
+    # закреплённой кнопки перехватит заглушка неизвестных сообщений
     dp.include_router(admin.router)
+    dp.include_router(favorite_route.pinned_router)
     dp.include_router(common.router)
     dp.include_router(new_route.router)
     dp.include_router(favorite_route.router)

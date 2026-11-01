@@ -104,3 +104,47 @@ def test_cleanup_runs(tmp_db):
     db.cleanup_runs("2026-10-24")
     assert db.get_run(1, "2026-10-23") is None
     assert db.get_run(1, "2026-10-24") is not None
+
+
+def test_pin_order_and_unpin(tmp_db):
+    a = db.add_favorite_route(5, "1", "1900", "900", "30", "Дом")
+    b = db.add_favorite_route(5, "2", "1900", "900", "30", "Работа")
+    c = db.add_favorite_route(6, "3", "1900", "900", "30", "Чужой")
+    assert db.get_pinned_favorites(5) == []
+
+    assert db.set_pinned(5, b, True) is True
+    assert db.set_pinned(5, a, True) is True
+    assert db.set_pinned(5, a, True) is False  # уже закреплён
+    assert db.set_pinned(5, c, True) is False  # чужой маршрут
+    assert db.get_pinned_favorites(5) == [(b, "2", "Работа"), (a, "1", "Дом")]
+    assert db.is_pinned(5, a) is True and db.is_pinned(6, c) is False
+
+    assert db.set_pinned(5, b, False) is True
+    assert db.get_pinned_favorites(5) == [(a, "1", "Дом")]
+    assert db.set_pinned(5, b, True) is True  # снова в конец
+    assert [f[0] for f in db.get_pinned_favorites(5)] == [a, b]
+
+
+def test_deleting_favorite_removes_pin(tmp_db):
+    a = db.add_favorite_route(5, "1", "1900", "900", "30", "Дом")
+    db.set_pinned(5, a, True)
+    db.delete_favorite_route(a, 5)
+    assert db.get_pinned_favorites(5) == []
+
+
+def test_migration_adds_pin_column(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    conn = sqlite3.connect("izhGet.db")
+    conn.execute("""CREATE TABLE favorite_route (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, route TEXT, snt TEXT,
+        dsnt TEXT, timeint TEXT, custom_name TEXT)""")
+    conn.execute("INSERT INTO favorite_route (user_id, route, snt, dsnt, timeint, custom_name) "
+                 "VALUES (5, '1', '1900', '900', '30', 'Дом')")
+    conn.commit()
+    conn.close()
+
+    db.create_tables()
+    db.create_tables()
+
+    assert db.get_pinned_favorites(5) == []
+    assert db.set_pinned(5, 1, True) is True

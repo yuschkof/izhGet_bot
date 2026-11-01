@@ -26,9 +26,13 @@ async def cmd_start(message: Message):
         "⭐ Жми /favorites — сохраненные маршруты<br>"
         "💖 Жми /donate — поддержать проект"
     )
+    # Возвращаем закреплённые кнопки, если клавиатура пропала (например, после очистки чата)
+    # Только в личке: в группе личные кнопки увидели бы все участники
+    pinned = db.get_pinned_favorites(message.from_user.id) if message.chat.type == "private" else []
     await message.bot.send_rich_message(
         chat_id=message.chat.id,
-        rich_message=InputRichMessage(html=text)
+        rich_message=InputRichMessage(html=text),
+        reply_markup=kb.get_pinned_kb(pinned) if pinned else None
     )
 
 @router.message(Command("help"))
