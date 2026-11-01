@@ -1,8 +1,9 @@
-import hashlib
+import html
 from aiogram import Router, Bot, F
-from aiogram.types import InlineQuery, InlineQueryResultArticle, InputTextMessageContent, InputRichMessageContent, InputRichMessage, InlineKeyboardMarkup, InlineKeyboardButton, ChosenInlineResult, CallbackQuery
+from aiogram.types import InlineQuery, InlineQueryResultArticle, InputRichMessageContent, InputRichMessage, ChosenInlineResult, CallbackQuery
 
 import db.db as db
+import keyboards.keyboards as kb
 from request import get_result
 
 router = Router()
@@ -13,12 +14,12 @@ async def inline_search(query: InlineQuery):
     user_id = query.from_user.id
 
     favorites = db.get_favorite_routes(user_id)
-    
+
     if not favorites:
         await query.answer(
-            [], 
-            cache_time=1, 
-            is_personal=True, 
+            [],
+            cache_time=1,
+            is_personal=True,
             switch_pm_text="Список пуст. Создать маршрут",
             switch_pm_parameter="inline_empty"
         )
@@ -26,19 +27,10 @@ async def inline_search(query: InlineQuery):
 
     results = []
 
-    for fav in favorites:
-        try:
-            # Теперь индексы такие: id(0), route(1), snt(2), dsnt(3), timeint(4), custom_name(5)
-            fav_id = fav[0]
-            route = fav[1]
-            timeint = fav[4]
-            custom_name = fav[5] if len(fav) > 5 else None
-        except IndexError:
-            continue
-
+    for fav_id, route, _, _, timeint, custom_name in favorites:
         # Берем красивое имя из БД. Если его там вдруг нет (до миграции), ставим заглушку.
         title = custom_name if custom_name else f"🚌 Маршрут {route}"
-        
+
         # Фильтрация (если пользователь начал вводить текст в inline-режиме)
         if text and text not in title.lower():
             continue
@@ -49,18 +41,24 @@ async def inline_search(query: InlineQuery):
                 title=title,
                 description=f"Интервал: {timeint} мин.",
                 input_message_content=InputRichMessageContent(
-                    rich_message=InputRichMessage(html=f"⏳ Загружаю расписание: <b>{title}</b>...")
+                    rich_message=InputRichMessage(html=f"⏳ Загружаю расписание: <b>{html.escape(title)}</b>...")
                 ),
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                    InlineKeyboardButton(
-                        text="Загрузка...", 
-                        callback_data="ignore"
-                    )
-                ]])
+                reply_markup=kb.get_inline_loading_kb()
             )
         )
 
     await query.answer(results, cache_time=1, is_personal=True)
+
+
+async def _edit_inline_timetable(bot: Bot, inline_message_id: str, fav):
+    """Запрашивает расписание с сайта ИжГЭТ и подставляет его в inline-сообщение."""
+    fav_id, route, snt, dsnt, timeint, _ = fav
+    text_result = await get_result(timeint=timeint, snt=snt, dsnt=dsnt, route=route)
+    await bot.edit_message_text(
+        inline_message_id=inline_message_id,
+        rich_message=InputRichMessage(html=text_result),
+        reply_markup=kb.get_inline_result_kb(fav_id)
+    )
 
 
 @router.chosen_inline_result()
@@ -77,12 +75,7 @@ async def on_chosen_inline_result(chosen_result: ChosenInlineResult, bot: Bot):
     except (IndexError, ValueError):
         return
 
-    user_id = chosen_result.from_user.id
-    favorites = db.get_favorite_routes(user_id)
-    
-    # Ищем маршрут в списке
-    target_fav = next((f for f in favorites if f[0] == fav_id), None)
-
+    target_fav = db.get_favorite(chosen_result.from_user.id, fav_id)
     if not target_fav:
         await bot.edit_message_text(
             text="❌ Маршрут не найден в базе.",
@@ -90,41 +83,7 @@ async def on_chosen_inline_result(chosen_result: ChosenInlineResult, bot: Bot):
         )
         return
 
-    # Достаем данные для запроса (route, snt, dsnt, timeint)
-    try:
-        route = target_fav[1]
-        snt = target_fav[2]
-        dsnt = target_fav[3]
-        timeint = target_fav[4]
-    except IndexError:
-        return
-
-    # Запрашиваем расписание напрямую с сайта ИжГЭТ
-    text_result = await get_result(
-        timeint=timeint,
-        snt=snt,
-        dsnt=dsnt,
-        route=route
-    )
-
-    # Меняем кнопку "Загрузка..." на "Обновить" и "Поддержать"
-    markup = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(
-            text="🔄 Обновить", 
-            callback_data=f"inline_ref:{fav_id}"
-        ),
-        InlineKeyboardButton(
-            text="💖 Донат",
-            url="https://t.me/tribute/app?startapp=dzqK"
-        )
-    ]])
-
-    from aiogram.types import InputRichMessage
-    await bot.edit_message_text(
-        inline_message_id=chosen_result.inline_message_id,
-        rich_message=InputRichMessage(html=text_result),
-        reply_markup=markup
-    )
+    await _edit_inline_timetable(bot, chosen_result.inline_message_id, target_fav)
 
 @router.callback_query(F.data.startswith("inline_ref:"))
 async def on_inline_refresh(call: CallbackQuery, bot: Bot):
@@ -138,50 +97,15 @@ async def on_inline_refresh(call: CallbackQuery, bot: Bot):
         await call.answer("Ошибка данных", show_alert=True)
         return
 
-    user_id = call.from_user.id
-    favorites = db.get_favorite_routes(user_id)
-    target_fav = next((f for f in favorites if f[0] == fav_id), None)
-
+    target_fav = db.get_favorite(call.from_user.id, fav_id)
     if not target_fav:
         await call.answer("Маршрут не найден", show_alert=True)
         return
 
-    try:
-        route = target_fav[1]
-        snt = target_fav[2]
-        dsnt = target_fav[3]
-        timeint = target_fav[4]
-    except IndexError:
-        await call.answer("Ошибка данных маршрута", show_alert=True)
-        return
-
     await call.answer("Обновляю расписание...")
 
-    text_result = await get_result(
-        timeint=timeint,
-        snt=snt,
-        dsnt=dsnt,
-        route=route
-    )
-
-    markup = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(
-            text="🔄 Обновить", 
-            callback_data=f"inline_ref:{fav_id}"
-        ),
-        InlineKeyboardButton(
-            text="💖 Донат",
-            url="https://t.me/tribute/app?startapp=dzqK"
-        )
-    ]])
-
     try:
-        from aiogram.types import InputRichMessage
-        await bot.edit_message_text(
-            inline_message_id=call.inline_message_id,
-            rich_message=InputRichMessage(html=text_result),
-            reply_markup=markup
-        )
+        await _edit_inline_timetable(bot, call.inline_message_id, target_fav)
     except Exception:
         # Игнорируем ошибку "Message is not modified"
-        pass
+        pass

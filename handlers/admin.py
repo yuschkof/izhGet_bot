@@ -16,6 +16,9 @@ router = Router()
 load_dotenv()
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 
+# Роутер подключается раньше common, поэтому пропускаем через него только сообщения админа
+router.message.filter(F.from_user.id == ADMIN_ID)
+
 class AdminState(StatesGroup):
     waiting_for_message = State()
     confirm_send = State()
@@ -44,7 +47,7 @@ async def cmd_admin(message: Message, state: FSMContext):
     await message.answer("📢 <b>Режим рассылки</b>\n\nПришлите сообщение...")
     await state.set_state(AdminState.waiting_for_message)
 
-@router.message(AdminState.waiting_for_message)
+@router.message(AdminState.waiting_for_message, lambda m: not (m.text or "").startswith("/"))
 async def process_admin_message(message: Message, state: FSMContext, bot: Bot):
     if not is_admin(message.from_user.id): 
         return
@@ -134,19 +137,19 @@ async def cmd_reply(message: Message, bot: Bot):
     except Exception as e:
         await message.answer(f"🚫 Ошибка при отправке: {e}")
 
-@router.message(F.reply_to_message)
-async def admin_reply_handler(message: Message, bot: Bot):
-    if not is_admin(message.from_user.id):
-        return
-        
-    # Пытаемся достать ID из сообщения, на которое отвечает админ
-    original_text = message.reply_to_message.text or message.reply_to_message.caption or ""
-    
-    match = re.search(r"ID:\s*(\d+)", original_text)
+def support_reply_target(message: Message):
+    """Фильтр: реплай на обращение в поддержку. Отдаёт ID пользователя из его текста."""
+    original = message.reply_to_message
+    if not original:
+        return False
+    match = re.search(r"ID:\s*(\d+)", original.text or original.caption or "")
     if not match:
-        return # Ответили на какое-то другое сообщение
-        
-    user_id = int(match.group(1))
+        return False  # Ответили на какое-то другое сообщение — пусть обработают другие роутеры
+    return {"target_user_id": int(match.group(1))}
+
+@router.message(support_reply_target)
+async def admin_reply_handler(message: Message, bot: Bot, target_user_id: int):
+    user_id = target_user_id
     
     try:
         if bool(message.text):

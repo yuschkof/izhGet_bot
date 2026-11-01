@@ -1,3 +1,6 @@
+from datetime import datetime
+
+import pytz
 from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject
 import db.db as db
@@ -11,8 +14,6 @@ class UserRegisterMiddleware(BaseMiddleware):
     ):
         user = data.get("event_from_user")
         if user:
-            from datetime import datetime
-            import pytz
             date_str = datetime.now(pytz.timezone('Europe/Samara')).strftime("%d.%m.%Y")
 
             is_new = db.add_user({
